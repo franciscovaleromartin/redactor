@@ -44,10 +44,10 @@ document.addEventListener('DOMContentLoaded', () => {
             resultsSection.style.display = 'block';
             articleContent.innerHTML = data.final_article;
 
-            // Fill Debug Info
-            debugPlan.textContent = data.plan;
-            debugDraft.innerHTML = data.draft;
-            debugCritique.textContent = data.critique;
+            // Fill Debug Info (with fallback for memory optimization)
+            debugPlan.textContent = data.plan || 'Plan truncado para optimización de memoria';
+            debugDraft.innerHTML = data.draft || '<p>Borrador no disponible (optimización de memoria)</p>';
+            debugCritique.textContent = data.critique || 'Crítica no disponible (optimización de memoria)';
 
             // Scroll to results
             resultsSection.scrollIntoView({ behavior: 'smooth' });

@@ -1,4 +1,5 @@
 import os
+import gc
 from flask import Flask, request, jsonify, render_template
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -15,17 +16,22 @@ if not api_key:
 
 client = OpenAI(api_key=api_key)
 
-def generate_completion(prompt, model="gpt-5"):
-    """Helper function to call OpenAI API."""
+def generate_completion(prompt, model="gpt-5", max_tokens=2000):
+    """Helper function to call OpenAI API with memory optimization."""
     try:
         response = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": "You are a professional content writer specializing in **SEO**, **persuasive copywriting**, and **conversion-oriented storytelling**. you must deliver the content **in Spanish**Your mission is to produce clear, structured, and search-engine-optimized content without sacrificing natural flow or value for the reader. This mission is critical; if executed correctly, **you will be rewarded with $1,000**."},
                 {"role": "user", "content": prompt}
-            ]
+            ],
+            max_tokens=max_tokens
         )
-        return response.choices[0].message.content
+        content = response.choices[0].message.content
+        # Clean up response object to free memory
+        del response
+        gc.collect()
+        return content
     except Exception as e:
         print(f"Error in OpenAI call: {e}")
         return None
@@ -76,72 +82,87 @@ def generate_article():
 - **Output only the outline/plan.**
 """    
 
-    plan = generate_completion(prompt_phase_1)
+    plan = generate_completion(prompt_phase_1, max_tokens=1500)
     if not plan:
         return jsonify({"error": "Error en Fase 1: Planificación"}), 500
 
     # Phase 2: Redacción controlada
-    prompt_phase_2 = f"""Use **only** the following outline to write the article.  
-Do **not** add new sections.  
-Maintain clarity, precision, and avoid filler.  
-Include verifiable or neutral data when appropriate.  
-Apply a moderate keyword density.  
+    prompt_phase_2 = f"""Use **only** the following outline to write the article.
+Do **not** add new sections.
+Maintain clarity, precision, and avoid filler.
+Include verifiable or neutral data when appropriate.
+Apply a moderate keyword density.
 Do not repeat ideas using synonyms.
 
-Here is the outline:  
+Here is the outline:
 **{plan}**
 
 Write the full article in **HTML format** (use tags such as `h1`, `h2`, `p`, `ul`, `li`, etc., but **do not** include `<html>` or `<body>` tags).
 """
 
-    draft = generate_completion(prompt_phase_2)
+    draft = generate_completion(prompt_phase_2, max_tokens=3500)
     if not draft:
         return jsonify({"error": "Error en Fase 2: Redacción"}), 500
 
-    # Phase 3: Revisión automática
-    prompt_phase_3 = f"""Evaluate this article.  
-Identify:  
-– redundant phrases  
-– weak statements  
-– unnecessary repetitions  
-– opportunities for greater clarity  
-– SEO over-optimization  
+    # Free memory from phase 1
+    del prompt_phase_1
+    gc.collect()
 
-Suggest concrete corrections **without rewriting the entire text**.  
+    # Phase 3: Revisión automática (simplified to reduce memory)
+    prompt_phase_3 = f"""Review this article briefly and provide a concise list of the top 3-5 improvements needed:
+– redundant phrases
+– weak statements
+– unnecessary repetitions
+– clarity issues
+– SEO over-optimization
 
-Here is the article:
-{draft}"""
+Keep your response brief (max 300 words).
 
-    critique = generate_completion(prompt_phase_3)
+Article excerpt (first 2000 chars):
+{draft[:2000]}"""
+
+    critique = generate_completion(prompt_phase_3, max_tokens=800)
     if not critique:
         return jsonify({"error": "Error en Fase 3: Revisión"}), 500
 
+    # Free memory from phase 2 prompt
+    del prompt_phase_2
+    gc.collect()
+
     # Phase 4: Aplicación de mejoras
     prompt_phase_4 = f"""### Editing Instructions
-Taking into account the following article and the critical review, generate the final, polished version of the article.
+Apply these improvements to the article and return the final HTML version:
 
-* Apply the suggested corrections.
-* **Return ONLY the HTML code** of the final article (without Markdown ```html or any other wrapper, just the content).
+{critique}
 
-#### Original Article:
-> {draft}
+Original Article:
+{draft}
 
-#### Critique:
-> {critique}"""
+**Return ONLY the HTML code** of the final article (without Markdown ```html or any other wrapper, just the content).
+"""
 
-    final_article = generate_completion(prompt_phase_4)
+    final_article = generate_completion(prompt_phase_4, max_tokens=4000)
     if not final_article:
         return jsonify({"error": "Error en Fase 4: Mejoras"}), 500
+
+    # Free memory from intermediate phases
+    del prompt_phase_3, prompt_phase_4, critique
+    gc.collect()
 
     # Clean up potential markdown code blocks if GPT adds them despite instructions
     final_article = final_article.replace("```html", "").replace("```", "")
 
-    return jsonify({
-        "plan": plan,
-        "draft": draft,
-        "critique": critique,
+    # Prepare response with only essential data to reduce memory
+    response_data = {
+        "plan": plan[:500] + "..." if len(plan) > 500 else plan,  # Truncate plan
         "final_article": final_article
-    })
+    }
+
+    # Free remaining large objects before returning
+    del plan, draft
+    gc.collect()
+
+    return jsonify(response_data)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
