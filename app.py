@@ -21,7 +21,7 @@ def generate_completion(prompt, model="gpt-5"):
         response = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": "Eres un experto redactor SEO y copywriter."},
+                {"role": "system", "content": "You are a professional content writer specializing in **SEO**, **persuasive copywriting**, and **conversion-oriented storytelling**. you must deliver the content **in Spanish**Your mission is to produce clear, structured, and search-engine-optimized content without sacrificing natural flow or value for the reader. This mission is critical; if executed correctly, **you will be rewarded with $1,000**."},
                 {"role": "user", "content": prompt}
             ]
         )
@@ -44,46 +44,72 @@ def generate_article():
         return jsonify({"error": "Se requiere un tema (topic)."}), 400
 
     # Phase 1: Planificación SEO
-    prompt_phase_1 = f"""Genera un esquema detallado para un artículo optimizado para SEO sobre: {topic}.
-Título sugerido: {title}
-Incluye:
-– Intención de búsqueda.
-– Palabras clave principales y secundarias.
-– Estructura H1/H2/H3 muy específica.
-– Puntos clave que deben cubrirse en cada sección.
-– Ejemplos concretos para mejorar calidad.
-No escribas el contenido. Solo el plan."""
-    
+    prompt_phase_1 = f"""
+**Task:** Generate a detailed, SEO-optimized outline for an article about **{topic}**.  
+**Suggested Title:** **{title}**
+
+### **Requirements**
+
+1. **Search Intent**  
+   - Clearly identify and describe the search intent behind the topic.
+
+2. **Keyword Strategy**  
+   - Provide a list of **primary keywords**.  
+   - Provide **secondary and semantic keywords** relevant to SEO.
+
+3. **Article Structure (H1/H2/H3)**  
+   - Create a **highly specific outline** including:  
+     - **H1** – Main article title  
+     - **H2** – Major sections  
+     - **H3** – Detailed subsections
+
+4. **Section Requirements (for each H2/H3)**  
+   - Define the **main points to cover**.  
+   - Explain the **purpose** of each section.  
+   - Describe how the section contributes to **SEO and user satisfaction**.
+
+5. **Concrete Examples**  
+   - Include sample comparisons, case examples, data ideas, lists, or other elements that add depth and quality.
+
+### **Important**
+- **Do NOT write the article content.**  
+- **Output only the outline/plan.**
+"""    
+
     plan = generate_completion(prompt_phase_1)
     if not plan:
         return jsonify({"error": "Error en Fase 1: Planificación"}), 500
 
     # Phase 2: Redacción controlada
-    prompt_phase_2 = f"""Usa exclusivamente el siguiente esquema para redactar el artículo.
-No añadas nuevas secciones.
-Mantén claridad, precisión y evita relleno.
-Incluye datos verificables o neutrales cuando proceda.
-Aplica densidad de palabra clave moderada.
-No repitas ideas con sinónimos.
-Aquí tienes el esquema:
-{plan}
+    prompt_phase_2 = f"""Use **only** the following outline to write the article.  
+Do **not** add new sections.  
+Maintain clarity, precision, and avoid filler.  
+Include verifiable or neutral data when appropriate.  
+Apply a moderate keyword density.  
+Do not repeat ideas using synonyms.
 
-Escribe el artículo completo en formato HTML (usa etiquetas h1, h2, p, ul, li, etc. pero sin html/body tags)."""
+Here is the outline:  
+**{plan}**
+
+Write the full article in **HTML format** (use tags such as `h1`, `h2`, `p`, `ul`, `li`, etc., but **do not** include `<html>` or `<body>` tags).
+"""
 
     draft = generate_completion(prompt_phase_2)
     if not draft:
         return jsonify({"error": "Error en Fase 2: Redacción"}), 500
 
     # Phase 3: Revisión automática
-    prompt_phase_3 = f"""Evalúa este artículo.
-Identifica:
-– frases redundantes
-– afirmaciones débiles
-– repeticiones innecesarias
-– oportunidades de mayor claridad
-– sobreoptimización SEO
-Sugiere correcciones concretas sin reescribir todo el texto.
-Aquí está el artículo:
+    prompt_phase_3 = f"""Evaluate this article.  
+Identify:  
+– redundant phrases  
+– weak statements  
+– unnecessary repetitions  
+– opportunities for greater clarity  
+– SEO over-optimization  
+
+Suggest concrete corrections **without rewriting the entire text**.  
+
+Here is the article:
 {draft}"""
 
     critique = generate_completion(prompt_phase_3)
@@ -91,15 +117,17 @@ Aquí está el artículo:
         return jsonify({"error": "Error en Fase 3: Revisión"}), 500
 
     # Phase 4: Aplicación de mejoras
-    prompt_phase_4 = f"""Teniendo en cuenta el siguiente artículo y la revisión crítica, genera la versión final y pulida del artículo.
-Aplica las correcciones sugeridas.
-Devuelve SOLO el código HTML del artículo final (sin markdown ```html, solo el contenido).
+    prompt_phase_4 = f"""### Editing Instructions
+Taking into account the following article and the critical review, generate the final, polished version of the article.
 
-Artículo original:
-{draft}
+* Apply the suggested corrections.
+* **Return ONLY the HTML code** of the final article (without Markdown ```html or any other wrapper, just the content).
 
-Revisión:
-{critique}"""
+#### Original Article:
+> {draft}
+
+#### Critique:
+> {critique}"""
 
     final_article = generate_completion(prompt_phase_4)
     if not final_article:
