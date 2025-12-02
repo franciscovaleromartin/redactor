@@ -8,7 +8,7 @@ bind = f"0.0.0.0:{os.environ.get('PORT', '5000')}"
 # Worker configuration optimized for low memory
 workers = 1  # Use only 1 worker to minimize memory usage
 worker_class = 'sync'
-threads = 2  # Use 2 threads per worker
+threads = 1  # Use 1 thread per worker to minimize memory usage
 
 # Memory optimization
 max_requests = 100  # Restart workers after 100 requests to prevent memory leaks

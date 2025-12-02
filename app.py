@@ -16,7 +16,7 @@ if not api_key:
 
 client = OpenAI(api_key=api_key)
 
-def generate_completion(prompt, model="gpt-4o", max_tokens=2000):
+def generate_completion(prompt, model="gpt-4o-mini", max_tokens=1500):
     """Helper function to call OpenAI API with memory optimization."""
     try:
         response = client.chat.completions.create(
@@ -42,6 +42,7 @@ def index():
 
 @app.route('/generate', methods=['POST'])
 def generate_article():
+    gc.collect()  # Force garbage collection before starting
     data = request.json
     topic = data.get('topic')
     title = data.get('title')
@@ -60,7 +61,7 @@ Incluye:
 – Ejemplos concretos para mejorar calidad.
 No escribas el contenido. Solo el plan."""
 
-    plan = generate_completion(prompt_phase_1, max_tokens=1500)
+    plan = generate_completion(prompt_phase_1, max_tokens=1000)
     if not plan:
         return jsonify({"error": "Error en Fase 1: Planificación"}), 500
 
@@ -76,7 +77,7 @@ Aquí tienes el esquema:
 
 Escribe el artículo completo en formato HTML (usa etiquetas h1, h2, p, ul, li, etc. pero sin html/body tags)."""
 
-    draft = generate_completion(prompt_phase_2, max_tokens=3500)
+    draft = generate_completion(prompt_phase_2, max_tokens=2500)
     if not draft:
         return jsonify({"error": "Error en Fase 2: Redacción"}), 500
 
@@ -115,7 +116,7 @@ Artículo original:
 Revisión:
 {critique}"""
 
-    final_article = generate_completion(prompt_phase_4, max_tokens=4000)
+    final_article = generate_completion(prompt_phase_4, max_tokens=3000)
     if not final_article:
         return jsonify({"error": "Error en Fase 4: Mejoras"}), 500
 
