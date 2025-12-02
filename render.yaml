@@ -3,7 +3,7 @@ services:
     name: redactor-sidn
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn -c gunicorn_config.py app:app
+    startCommand: waitress-serve --port=$PORT app:app
     envVars:
       - key: api_key
         sync: false

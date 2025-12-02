@@ -40,9 +40,14 @@ def generate_completion(prompt, model="gpt-4o-mini", max_tokens=1500):
 def index():
     return render_template('index.html')
 
+from flask import Flask, request, jsonify, render_template, stream_with_context, Response
+import json
+
+# ... (imports remain the same)
+
 @app.route('/generate', methods=['POST'])
 def generate_article():
-    gc.collect()  # Force garbage collection before starting
+    gc.collect()
     data = request.json
     topic = data.get('topic')
     title = data.get('title')
@@ -50,8 +55,11 @@ def generate_article():
     if not topic:
         return jsonify({"error": "Se requiere un tema (topic)."}), 400
 
-    # Phase 1: Planificación SEO
-    prompt_phase_1 = f"""Genera un esquema detallado para un artículo optimizado para SEO sobre: {topic}.
+    def generate_stream():
+        # Phase 1: Planificación
+        yield json.dumps({"status": "phase_1", "message": "Generando esquema SEO..."}) + "\n"
+        
+        prompt_phase_1 = f"""Genera un esquema detallado para un artículo optimizado para SEO sobre: {topic}.
 Título sugerido: {title}
 Incluye:
 – Intención de búsqueda.
@@ -61,12 +69,19 @@ Incluye:
 – Ejemplos concretos para mejorar calidad.
 No escribas el contenido. Solo el plan."""
 
-    plan = generate_completion(prompt_phase_1, max_tokens=1000)
-    if not plan:
-        return jsonify({"error": "Error en Fase 1: Planificación"}), 500
+        plan = generate_completion(prompt_phase_1, max_tokens=1000)
+        if not plan:
+            yield json.dumps({"error": "Error en Fase 1"}) + "\n"
+            return
+            
+        yield json.dumps({"status": "phase_1_done", "data": plan}) + "\n"
+        del prompt_phase_1
+        gc.collect()
 
-    # Phase 2: Redacción controlada
-    prompt_phase_2 = f"""Usa exclusivamente el siguiente esquema para redactar el artículo.
+        # Phase 2: Redacción
+        yield json.dumps({"status": "phase_2", "message": "Redactando borrador..."}) + "\n"
+        
+        prompt_phase_2 = f"""Usa exclusivamente el siguiente esquema para redactar el artículo.
 No añadas nuevas secciones.
 Mantén claridad, precisión y evita relleno.
 Incluye datos verificables o neutrales cuando proceda.
@@ -77,16 +92,19 @@ Aquí tienes el esquema:
 
 Escribe el artículo completo en formato HTML (usa etiquetas h1, h2, p, ul, li, etc. pero sin html/body tags)."""
 
-    draft = generate_completion(prompt_phase_2, max_tokens=2500)
-    if not draft:
-        return jsonify({"error": "Error en Fase 2: Redacción"}), 500
+        draft = generate_completion(prompt_phase_2, max_tokens=2500)
+        if not draft:
+            yield json.dumps({"error": "Error en Fase 2"}) + "\n"
+            return
 
-    # Free memory from phase 1
-    del prompt_phase_1
-    gc.collect()
+        yield json.dumps({"status": "phase_2_done", "data": "Borrador generado (oculto para ahorrar memoria)"}) + "\n"
+        del prompt_phase_2
+        gc.collect()
 
-    # Phase 3: Revisión automática
-    prompt_phase_3 = f"""Evalúa este artículo.
+        # Phase 3: Revisión
+        yield json.dumps({"status": "phase_3", "message": "Revisando contenido..."}) + "\n"
+        
+        prompt_phase_3 = f"""Evalúa este artículo.
 Identifica:
 – frases redundantes
 – afirmaciones débiles
@@ -97,16 +115,19 @@ Sugiere correcciones concretas sin reescribir todo el texto.
 Aquí está el artículo:
 {draft}"""
 
-    critique = generate_completion(prompt_phase_3, max_tokens=1000)
-    if not critique:
-        return jsonify({"error": "Error en Fase 3: Revisión"}), 500
+        critique = generate_completion(prompt_phase_3, max_tokens=1000)
+        if not critique:
+            yield json.dumps({"error": "Error en Fase 3"}) + "\n"
+            return
 
-    # Free memory from phase 2 prompt
-    del prompt_phase_2
-    gc.collect()
+        yield json.dumps({"status": "phase_3_done", "data": critique}) + "\n"
+        del prompt_phase_3
+        gc.collect()
 
-    # Phase 4: Aplicación de mejoras
-    prompt_phase_4 = f"""Teniendo en cuenta el siguiente artículo y la revisión crítica, genera la versión final y pulida del artículo.
+        # Phase 4: Finalización
+        yield json.dumps({"status": "phase_4", "message": "Aplicando mejoras finales..."}) + "\n"
+        
+        prompt_phase_4 = f"""Teniendo en cuenta el siguiente artículo y la revisión crítica, genera la versión final y pulida del artículo.
 Aplica las correcciones sugeridas.
 Devuelve SOLO el código HTML del artículo final (sin markdown ```html, solo el contenido).
 
@@ -116,29 +137,21 @@ Artículo original:
 Revisión:
 {critique}"""
 
-    final_article = generate_completion(prompt_phase_4, max_tokens=3000)
-    if not final_article:
-        return jsonify({"error": "Error en Fase 4: Mejoras"}), 500
+        final_article = generate_completion(prompt_phase_4, max_tokens=3000)
+        if not final_article:
+            yield json.dumps({"error": "Error en Fase 4"}) + "\n"
+            return
 
-    # Free memory from intermediate phases
-    del prompt_phase_3, prompt_phase_4, critique
-    gc.collect()
+        # Cleanup
+        final_article = final_article.replace("```html", "").replace("```", "")
+        del prompt_phase_4, critique, draft, plan
+        gc.collect()
 
-    # Clean up potential markdown code blocks if GPT adds them despite instructions
-    final_article = final_article.replace("```html", "").replace("```", "")
+        yield json.dumps({"status": "complete", "final_article": final_article}) + "\n"
 
-    # Prepare response with only essential data to reduce memory
-    response_data = {
-        "plan": plan[:500] + "..." if len(plan) > 500 else plan,  # Truncate plan
-        "final_article": final_article
-    }
-
-    # Free remaining large objects before returning
-    del plan, draft
-    gc.collect()
-
-    return jsonify(response_data)
+    return Response(stream_with_context(generate_stream()), mimetype='application/json')
 
 if __name__ == '__main__':
+    from waitress import serve
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    serve(app, host='0.0.0.0', port=port)
