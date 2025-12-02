@@ -16,8 +16,13 @@ if not api_key:
 
 client = OpenAI(api_key=api_key)
 
-def generate_completion(prompt, model="gpt-4", max_tokens=2000):
+<<<<<<< HEAD
+def generate_completion(prompt, model="gpt-4o", max_tokens=2000):
     """Helper function to call OpenAI API with memory optimization."""
+=======
+def generate_completion(prompt, model="gpt-4o"):
+    """Helper function to call OpenAI API."""
+>>>>>>> 9e7dbc2 (rendimiento)
     try:
         response = client.chat.completions.create(
             model=model,
