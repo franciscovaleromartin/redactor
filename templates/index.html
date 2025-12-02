@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redactor SIDN - Generador de Artículos SEO</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Redactor SIDN</h1>
+            <p>Generador de contenido optimizado para SEO con IA</p>
+        </header>
+
+        <main>
+            <section class="input-section">
+                <form id="articleForm">
+                    <div class="form-group">
+                        <label for="topic">Tema / Palabras Clave</label>
+                        <input type="text" id="topic" name="topic" placeholder="Ej: Marketing Digital, SEO, IA" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="title">Título Sugerido (Opcional)</label>
+                        <input type="text" id="title" name="title" placeholder="Ej: Guía completa de Marketing Digital 2024">
+                    </div>
+
+                    <button type="submit" id="generateBtn">
+                        <span class="btn-text">Generar Artículo</span>
+                        <span class="loader" style="display: none;"></span>
+                    </button>
+                </form>
+            </section>
+
+            <section id="resultsSection" class="results-section" style="display: none;">
+                <div class="status-indicator">
+                    <div class="step" id="step1">1. Planificación</div>
+                    <div class="step" id="step2">2. Redacción</div>
+                    <div class="step" id="step3">3. Revisión</div>
+                    <div class="step" id="step4">4. Finalización</div>
+                </div>
+
+                <div class="result-container">
+                    <h2>Artículo Generado</h2>
+                    <div id="articleContent" class="article-content"></div>
+                </div>
+
+                <details class="debug-details">
+                    <summary>Ver detalles del proceso (Debug)</summary>
+                    <div class="debug-content">
+                        <h3>Planificación</h3>
+                        <pre id="debugPlan"></pre>
+                        <h3>Borrador</h3>
+                        <div id="debugDraft"></div>
+                        <h3>Crítica</h3>
+                        <pre id="debugCritique"></pre>
+                    </div>
+                </details>
+            </section>
+        </main>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
