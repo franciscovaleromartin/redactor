@@ -112,11 +112,19 @@ Escribe el artículo completo en formato HTML (usa etiquetas h1, h2, p, ul, li, 
 
             yield json.dumps({"status": "phase_2_done", "data": "Borrador completado"}) + "\n"
             del prompt_phase_2
+            
+            # Keep-alive during GC
+            yield json.dumps({"status": "keep_alive", "message": "Procesando..."}) + "\n"
             gc.collect()
 
             # Phase 3: Revisión
             yield json.dumps({"status": "phase_3", "message": "Revisando contenido..."}) + "\n"
             print("Iniciando Fase 3...") # Debug log
+            
+            # Truncate draft to avoid token limits (approx 12000 chars ~ 3000 tokens)
+            truncated_draft = draft[:12000] 
+            if len(draft) > 12000:
+                print("Aviso: Borrador truncado para Fase 3")
             
             prompt_phase_3 = f"""Evalúa este artículo.
 Identifica:
@@ -127,7 +135,7 @@ Identifica:
 – sobreoptimización SEO
 Sugiere correcciones concretas sin reescribir todo el texto.
 Aquí está el artículo:
-{draft}"""
+{truncated_draft}"""
 
             critique = generate_completion(prompt_phase_3, max_tokens=1000)
             if not critique:
@@ -137,6 +145,9 @@ Aquí está el artículo:
 
             yield json.dumps({"status": "phase_3_done", "data": critique}) + "\n"
             del prompt_phase_3
+            
+            # Keep-alive during GC
+            yield json.dumps({"status": "keep_alive", "message": "Procesando..."}) + "\n"
             gc.collect()
 
             # Phase 4: Finalización
@@ -148,7 +159,7 @@ Aplica las correcciones sugeridas.
 Devuelve SOLO el código HTML del artículo final (sin markdown ```html, solo el contenido).
 
 Artículo original:
-{draft}
+{truncated_draft}
 
 Revisión:
 {critique}"""
@@ -168,7 +179,7 @@ Revisión:
 
             # Cleanup
             final_article = final_article.replace("```html", "").replace("```", "")
-            del prompt_phase_4, critique, draft, plan
+            del prompt_phase_4, critique, draft, plan, truncated_draft
             gc.collect()
 
             yield json.dumps({"status": "complete", "final_article": final_article}) + "\n"
