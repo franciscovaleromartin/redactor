@@ -50,55 +50,31 @@ def generate_article():
         return jsonify({"error": "Se requiere un tema (topic)."}), 400
 
     # Phase 1: Planificación SEO
-    prompt_phase_1 = f"""
-**Task:** Generate a detailed, SEO-optimized outline for an article about **{topic}**.  
-**Suggested Title:** **{title}**
-
-### **Requirements**
-
-1. **Search Intent**  
-   - Clearly identify and describe the search intent behind the topic.
-
-2. **Keyword Strategy**  
-   - Provide a list of **primary keywords**.  
-   - Provide **secondary and semantic keywords** relevant to SEO.
-
-3. **Article Structure (H1/H2/H3)**  
-   - Create a **highly specific outline** including:  
-     - **H1** – Main article title  
-     - **H2** – Major sections  
-     - **H3** – Detailed subsections
-
-4. **Section Requirements (for each H2/H3)**  
-   - Define the **main points to cover**.  
-   - Explain the **purpose** of each section.  
-   - Describe how the section contributes to **SEO and user satisfaction**.
-
-5. **Concrete Examples**  
-   - Include sample comparisons, case examples, data ideas, lists, or other elements that add depth and quality.
-
-### **Important**
-- **Do NOT write the article content.**  
-- **Output only the outline/plan.**
-"""    
+    prompt_phase_1 = f"""Genera un esquema detallado para un artículo optimizado para SEO sobre: {topic}.
+Título sugerido: {title}
+Incluye:
+– Intención de búsqueda.
+– Palabras clave principales y secundarias.
+– Estructura H1/H2/H3 muy específica.
+– Puntos clave que deben cubrirse en cada sección.
+– Ejemplos concretos para mejorar calidad.
+No escribas el contenido. Solo el plan."""
 
     plan = generate_completion(prompt_phase_1, max_tokens=1500)
     if not plan:
         return jsonify({"error": "Error en Fase 1: Planificación"}), 500
 
     # Phase 2: Redacción controlada
-    prompt_phase_2 = f"""Use **only** the following outline to write the article.
-Do **not** add new sections.
-Maintain clarity, precision, and avoid filler.
-Include verifiable or neutral data when appropriate.
-Apply a moderate keyword density.
-Do not repeat ideas using synonyms.
+    prompt_phase_2 = f"""Usa exclusivamente el siguiente esquema para redactar el artículo.
+No añadas nuevas secciones.
+Mantén claridad, precisión y evita relleno.
+Incluye datos verificables o neutrales cuando proceda.
+Aplica densidad de palabra clave moderada.
+No repitas ideas con sinónimos.
+Aquí tienes el esquema:
+{plan}
 
-Here is the outline:
-**{plan}**
-
-Write the full article in **HTML format** (use tags such as `h1`, `h2`, `p`, `ul`, `li`, etc., but **do not** include `<html>` or `<body>` tags).
-"""
+Escribe el artículo completo en formato HTML (usa etiquetas h1, h2, p, ul, li, etc. pero sin html/body tags)."""
 
     draft = generate_completion(prompt_phase_2, max_tokens=3500)
     if not draft:
@@ -109,16 +85,15 @@ Write the full article in **HTML format** (use tags such as `h1`, `h2`, `p`, `ul
     gc.collect()
 
     # Phase 3: Revisión automática
-    prompt_phase_3 = f"""Review this complete article and provide a concise list of the top 3-5 improvements needed:
-– redundant phrases
-– weak statements
-– unnecessary repetitions
-– clarity issues
-– SEO over-optimization
-
-Keep your response brief and focused on the most important issues.
-
-Complete article:
+    prompt_phase_3 = f"""Evalúa este artículo.
+Identifica:
+– frases redundantes
+– afirmaciones débiles
+– repeticiones innecesarias
+– oportunidades de mayor claridad
+– sobreoptimización SEO
+Sugiere correcciones concretas sin reescribir todo el texto.
+Aquí está el artículo:
 {draft}"""
 
     critique = generate_completion(prompt_phase_3, max_tokens=1000)
@@ -130,16 +105,15 @@ Complete article:
     gc.collect()
 
     # Phase 4: Aplicación de mejoras
-    prompt_phase_4 = f"""### Editing Instructions
-Apply these improvements to the article and return the final HTML version:
+    prompt_phase_4 = f"""Teniendo en cuenta el siguiente artículo y la revisión crítica, genera la versión final y pulida del artículo.
+Aplica las correcciones sugeridas.
+Devuelve SOLO el código HTML del artículo final (sin markdown ```html, solo el contenido).
 
-{critique}
-
-Original Article:
+Artículo original:
 {draft}
 
-**Return ONLY the HTML code** of the final article (without Markdown ```html or any other wrapper, just the content).
-"""
+Revisión:
+{critique}"""
 
     final_article = generate_completion(prompt_phase_4, max_tokens=4000)
     if not final_article:
