@@ -16,7 +16,7 @@ if not api_key:
 
 client = OpenAI(api_key=api_key)
 
-def generate_completion(prompt, model="gpt-4o-mini", max_tokens=1500):
+def generate_completion(prompt, model="gpt-4o-mini", max_tokens=1500, stream=False):
     """Helper function to call OpenAI API with memory optimization."""
     try:
         response = client.chat.completions.create(
@@ -25,8 +25,12 @@ def generate_completion(prompt, model="gpt-4o-mini", max_tokens=1500):
                 {"role": "system", "content": "You are a professional content writer specializing in **SEO**, **persuasive copywriting**, and **conversion-oriented storytelling**. you must deliver the content **in Spanish**Your mission is to produce clear, structured, and search-engine-optimized content without sacrificing natural flow or value for the reader. This mission is critical; if executed correctly, **you will be rewarded with $1,000**."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
+            stream=stream
         )
+        if stream:
+            return response
+        
         content = response.choices[0].message.content
         # Clean up response object to free memory
         del response
@@ -39,11 +43,6 @@ def generate_completion(prompt, model="gpt-4o-mini", max_tokens=1500):
 @app.route('/')
 def index():
     return render_template('index.html')
-
-from flask import Flask, request, jsonify, render_template, stream_with_context, Response
-import json
-
-# ... (imports remain the same)
 
 @app.route('/generate', methods=['POST'])
 def generate_article():
@@ -92,12 +91,21 @@ Aquí tienes el esquema:
 
 Escribe el artículo completo en formato HTML (usa etiquetas h1, h2, p, ul, li, etc. pero sin html/body tags)."""
 
-        draft = generate_completion(prompt_phase_2, max_tokens=2500)
-        if not draft:
+        # Stream Phase 2 content
+        stream = generate_completion(prompt_phase_2, max_tokens=2500, stream=True)
+        if not stream:
             yield json.dumps({"error": "Error en Fase 2"}) + "\n"
             return
 
-        yield json.dumps({"status": "phase_2_done", "data": "Borrador generado (oculto para ahorrar memoria)"}) + "\n"
+        draft = ""
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                content_chunk = chunk.choices[0].delta.content
+                draft += content_chunk
+                # Yield small chunks to keep connection alive and show progress
+                yield json.dumps({"status": "phase_2_stream", "chunk": content_chunk}) + "\n"
+        
+        yield json.dumps({"status": "phase_2_done", "data": "Borrador completado"}) + "\n"
         del prompt_phase_2
         gc.collect()
 
@@ -137,10 +145,18 @@ Artículo original:
 Revisión:
 {critique}"""
 
-        final_article = generate_completion(prompt_phase_4, max_tokens=3000)
-        if not final_article:
+        # Stream Phase 4 content
+        stream_final = generate_completion(prompt_phase_4, max_tokens=3000, stream=True)
+        if not stream_final:
             yield json.dumps({"error": "Error en Fase 4"}) + "\n"
             return
+
+        final_article = ""
+        for chunk in stream_final:
+            if chunk.choices[0].delta.content:
+                content_chunk = chunk.choices[0].delta.content
+                final_article += content_chunk
+                yield json.dumps({"status": "phase_4_stream", "chunk": content_chunk}) + "\n"
 
         # Cleanup
         final_article = final_article.replace("```html", "").replace("```", "")

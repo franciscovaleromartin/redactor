@@ -75,15 +75,25 @@ document.addEventListener('DOMContentLoaded', () => {
                             debugPlan.textContent = data.data;
                         } else if (data.status === 'phase_2') {
                             btnText.textContent = 'Fase 2: Redactando...';
+                            debugDraft.innerHTML = ''; // Clear previous
+                        } else if (data.status === 'phase_2_stream') {
+                            // Append streaming content to draft debug view
+                            debugDraft.innerHTML += data.chunk.replace(/\n/g, '<br>');
                         } else if (data.status === 'phase_2_done') {
-                            debugDraft.innerHTML = '<p><em>Borrador generado internamente...</em></p>';
+                            // Phase 2 complete
                         } else if (data.status === 'phase_3') {
                             btnText.textContent = 'Fase 3: Revisando...';
                         } else if (data.status === 'phase_3_done') {
                             debugCritique.textContent = data.data;
                         } else if (data.status === 'phase_4') {
                             btnText.textContent = 'Fase 4: Finalizando...';
+                            articleContent.innerHTML = ''; // Clear previous
+                        } else if (data.status === 'phase_4_stream') {
+                            // Append streaming content to final article view
+                            // Note: This is raw HTML chunks, so we append directly
+                            articleContent.innerHTML += data.chunk;
                         } else if (data.status === 'complete') {
+                            // Ensure final clean version is set
                             articleContent.innerHTML = data.final_article;
                             btnText.textContent = '¡Completado!';
                         }
