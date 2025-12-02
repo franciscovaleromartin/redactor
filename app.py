@@ -108,20 +108,20 @@ Write the full article in **HTML format** (use tags such as `h1`, `h2`, `p`, `ul
     del prompt_phase_1
     gc.collect()
 
-    # Phase 3: Revisión automática (simplified to reduce memory)
-    prompt_phase_3 = f"""Review this article briefly and provide a concise list of the top 3-5 improvements needed:
+    # Phase 3: Revisión automática
+    prompt_phase_3 = f"""Review this complete article and provide a concise list of the top 3-5 improvements needed:
 – redundant phrases
 – weak statements
 – unnecessary repetitions
 – clarity issues
 – SEO over-optimization
 
-Keep your response brief (max 300 words).
+Keep your response brief and focused on the most important issues.
 
-Article excerpt (first 2000 chars):
-{draft[:2000]}"""
+Complete article:
+{draft}"""
 
-    critique = generate_completion(prompt_phase_3, max_tokens=800)
+    critique = generate_completion(prompt_phase_3, max_tokens=1000)
     if not critique:
         return jsonify({"error": "Error en Fase 3: Revisión"}), 500
 
