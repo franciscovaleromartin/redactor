@@ -24,7 +24,7 @@ Aplicación web para generar artículos optimizados para SEO usando un proceso d
    
 3. **Configura la variable de entorno:**
    - En el dashboard de Render, ve a "Environment"
-   - Añade la variable: `api_key` con tu API key de OpenAI
+   - Añade la variable: `api_key` con tu **Google API Key** (de Google AI Studio)
    
 4. **Despliega:**
    - Render desplegará automáticamente tu aplicación
@@ -32,7 +32,7 @@ Aplicación web para generar artículos optimizados para SEO usando un proceso d
 
 ## Variables de entorno necesarias
 
-- `api_key`: Tu API key de OpenAI
+- `api_key`: Tu Google API Key (consíguela en [Google AI Studio](https://aistudio.google.com/))
 
 ## Desarrollo local
 
@@ -49,7 +49,7 @@ Aplicación web para generar artículos optimizados para SEO usando un proceso d
 
 3. Crea un archivo `.env` con tu API key:
    ```
-   api_key=tu-api-key-aqui
+   api_key=tu-google-api-key-aqui
    ```
 
 4. Ejecuta la aplicación:

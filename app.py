@@ -2,7 +2,7 @@ import os
 import gc
 import json
 from flask import Flask, request, jsonify, render_template, stream_with_context, Response
-from openai import OpenAI
+import google.generativeai as genai
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -10,35 +10,48 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Initialize OpenAI client
+# Initialize Gemini
 api_key = os.environ.get("api_key")
 if not api_key:
     print("WARNING: 'api_key' environment variable not found. Please set it or create a .env file.")
 
-client = OpenAI(api_key=api_key)
+if api_key:
+    genai.configure(api_key=api_key)
 
-def generate_completion(prompt, model="gpt-4o-mini", max_tokens=1500, stream=False):
-    """Helper function to call OpenAI API with memory optimization."""
+def generate_completion(prompt, model_name="gemini-1.5-flash", max_tokens=None, stream=False):
+    """Helper function to call Google Gemini API."""
     try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "You are a professional content writer specializing in **SEO**, **persuasive copywriting**, and **conversion-oriented storytelling**. you must deliver the content **in Spanish**Your mission is to produce clear, structured, and search-engine-optimized content without sacrificing natural flow or value for the reader. This mission is critical; if executed correctly, **you will be rewarded with $1,000**."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=max_tokens,
+        model = genai.GenerativeModel(model_name)
+        
+        # Configure generation config
+        generation_config = genai.types.GenerationConfig(
+            max_output_tokens=max_tokens,
+            temperature=0.7
+        )
+
+        # System instruction is not directly supported in the same way as OpenAI's "system" role in chat.
+        # For Gemini, we can prepend it to the prompt or use the system_instruction argument if supported by the SDK version.
+        # Here we will prepend it for compatibility.
+        system_instruction = "You are a professional content writer specializing in **SEO**, **persuasive copywriting**, and **conversion-oriented storytelling**. you must deliver the content **in Spanish**Your mission is to produce clear, structured, and search-engine-optimized content without sacrificing natural flow or value for the reader. This mission is critical; if executed correctly, **you will be rewarded with $1,000**.\n\n"
+        
+        full_prompt = system_instruction + prompt
+
+        response = model.generate_content(
+            full_prompt,
+            generation_config=generation_config,
             stream=stream
         )
+        
         if stream:
             return response
         
-        content = response.choices[0].message.content
+        content = response.text
         # Clean up response object to free memory
         del response
         gc.collect()
         return content
     except Exception as e:
-        print(f"Error in OpenAI call: {e}")
+        print(f"Error in Gemini call: {e}")
         return None
 
 @app.route('/')
@@ -101,8 +114,8 @@ Escribe el artículo completo en formato HTML (usa etiquetas h1, h2, p, ul, li, 
 
             draft = ""
             for chunk in stream:
-                if chunk.choices[0].delta.content:
-                    content_chunk = chunk.choices[0].delta.content
+                if chunk.text:
+                    content_chunk = chunk.text
                     draft += content_chunk
                     yield json.dumps({"status": "phase_2_stream", "chunk": content_chunk}) + "\n"
             
@@ -172,8 +185,8 @@ Revisión:
 
             final_article = ""
             for chunk in stream_final:
-                if chunk.choices[0].delta.content:
-                    content_chunk = chunk.choices[0].delta.content
+                if chunk.text:
+                    content_chunk = chunk.text
                     final_article += content_chunk
                     yield json.dumps({"status": "phase_4_stream", "chunk": content_chunk}) + "\n"
 
