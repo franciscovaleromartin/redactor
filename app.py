@@ -18,7 +18,7 @@ if not api_key:
 if api_key:
     genai.configure(api_key=api_key)
 
-def generate_completion(prompt, model_name="gemini-1.5-flash", max_tokens=None, stream=False):
+def generate_completion(prompt, model_name="gemini-pro", max_tokens=None, stream=False):
     """Helper function to call Google Gemini API."""
     # Note: Exceptions are now propagated to be caught by generate_stream
     model = genai.GenerativeModel(model_name)
