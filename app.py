@@ -113,6 +113,12 @@ def generate_completion(prompt, model_name=None, max_tokens=None, stream=False):
     if stream:
         return response
     
+    # Check if response was blocked
+    if not response.candidates or not response.candidates[0].content.parts:
+        # Content was blocked by safety filters
+        finish_reason = response.candidates[0].finish_reason if response.candidates else "UNKNOWN"
+        raise Exception(f"Content blocked by Gemini safety filters (finish_reason: {finish_reason}). Try rephrasing your topic.")
+    
     content = response.text
     # Clean up response object to free memory
     del response
@@ -179,7 +185,8 @@ Escribe el artículo completo en formato HTML (usa etiquetas h1, h2, p, ul, li, 
 
             draft = ""
             for chunk in stream:
-                if chunk.text:
+                # Check if chunk has valid content
+                if hasattr(chunk, 'text') and chunk.text:
                     content_chunk = chunk.text
                     draft += content_chunk
                     yield json.dumps({"status": "phase_2_stream", "chunk": content_chunk}) + "\n"
@@ -250,7 +257,8 @@ Revisión:
 
             final_article = ""
             for chunk in stream_final:
-                if chunk.text:
+                # Check if chunk has valid content
+                if hasattr(chunk, 'text') and chunk.text:
                     content_chunk = chunk.text
                     final_article += content_chunk
                     yield json.dumps({"status": "phase_4_stream", "chunk": content_chunk}) + "\n"
