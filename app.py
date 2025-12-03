@@ -79,7 +79,7 @@ def generate_completion(prompt, model_name=None, max_tokens=None, stream=False):
     )
 
     # System instruction prepended to prompt
-    system_instruction = "You are a professional content writer specializing in **SEO**, **persuasive copywriting**, and **conversion-oriented storytelling**. you must deliver the content **in Spanish**Your mission is to produce clear, structured, and search-engine-optimized content without sacrificing natural flow or value for the reader. This mission is critical; if executed correctly, **you will be rewarded with $1,000**.\n\n"
+    system_instruction = "Eres un redactor profesional especializado en SEO y copywriting. Escribe contenido claro, estructurado y optimizado para buscadores en español.\n\n"
     
     full_prompt = system_instruction + prompt
 
