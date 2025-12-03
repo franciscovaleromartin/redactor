@@ -25,9 +25,44 @@ if api_key:
     except Exception as e:
         print(f"Error listing models: {e}")
 
-def generate_completion(prompt, model_name="gemini-1.5-flash", max_tokens=None, stream=False):
+# Try models in order of preference until one works
+AVAILABLE_MODELS = [
+    "gemini-2.0-flash-exp",  # Latest experimental
+    "gemini-1.5-flash",      # Fast and efficient
+    "gemini-1.5-pro",        # More capable
+    "gemini-1.0-pro",        # Stable fallback
+]
+
+def get_working_model():
+    """Find the first working model from the available list."""
+    for model_name in AVAILABLE_MODELS:
+        try:
+            model = genai.GenerativeModel(model_name)
+            # Test with a simple prompt
+            test_response = model.generate_content("Hi", generation_config=genai.types.GenerationConfig(max_output_tokens=10))
+            print(f"✓ Using model: {model_name}")
+            return model_name
+        except Exception as e:
+            print(f"✗ Model {model_name} not available: {e}")
+            continue
+    raise Exception("No working Gemini models found. Please check your API key.")
+
+# Determine working model at startup
+WORKING_MODEL = None
+if api_key:
+    try:
+        WORKING_MODEL = get_working_model()
+    except Exception as e:
+        print(f"ERROR: {e}")
+
+def generate_completion(prompt, model_name=None, max_tokens=None, stream=False):
     """Helper function to call Google Gemini API."""
-    # Note: Exceptions are now propagated to be caught by generate_stream
+    if model_name is None:
+        model_name = WORKING_MODEL
+    
+    if not model_name:
+        raise Exception("No working Gemini model available")
+    
     model = genai.GenerativeModel(model_name)
     
     # Configure generation config
@@ -36,9 +71,7 @@ def generate_completion(prompt, model_name="gemini-1.5-flash", max_tokens=None, 
         temperature=0.7
     )
 
-    # System instruction is not directly supported in the same way as OpenAI's "system" role in chat.
-    # For Gemini, we can prepend it to the prompt or use the system_instruction argument if supported by the SDK version.
-    # Here we will prepend it for compatibility.
+    # System instruction prepended to prompt
     system_instruction = "You are a professional content writer specializing in **SEO**, **persuasive copywriting**, and **conversion-oriented storytelling**. you must deliver the content **in Spanish**Your mission is to produce clear, structured, and search-engine-optimized content without sacrificing natural flow or value for the reader. This mission is critical; if executed correctly, **you will be rewarded with $1,000**.\n\n"
     
     full_prompt = system_instruction + prompt
