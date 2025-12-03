@@ -20,39 +20,36 @@ if api_key:
 
 def generate_completion(prompt, model_name="gemini-1.5-flash", max_tokens=None, stream=False):
     """Helper function to call Google Gemini API."""
-    try:
-        model = genai.GenerativeModel(model_name)
-        
-        # Configure generation config
-        generation_config = genai.types.GenerationConfig(
-            max_output_tokens=max_tokens,
-            temperature=0.7
-        )
+    # Note: Exceptions are now propagated to be caught by generate_stream
+    model = genai.GenerativeModel(model_name)
+    
+    # Configure generation config
+    generation_config = genai.types.GenerationConfig(
+        max_output_tokens=max_tokens,
+        temperature=0.7
+    )
 
-        # System instruction is not directly supported in the same way as OpenAI's "system" role in chat.
-        # For Gemini, we can prepend it to the prompt or use the system_instruction argument if supported by the SDK version.
-        # Here we will prepend it for compatibility.
-        system_instruction = "You are a professional content writer specializing in **SEO**, **persuasive copywriting**, and **conversion-oriented storytelling**. you must deliver the content **in Spanish**Your mission is to produce clear, structured, and search-engine-optimized content without sacrificing natural flow or value for the reader. This mission is critical; if executed correctly, **you will be rewarded with $1,000**.\n\n"
-        
-        full_prompt = system_instruction + prompt
+    # System instruction is not directly supported in the same way as OpenAI's "system" role in chat.
+    # For Gemini, we can prepend it to the prompt or use the system_instruction argument if supported by the SDK version.
+    # Here we will prepend it for compatibility.
+    system_instruction = "You are a professional content writer specializing in **SEO**, **persuasive copywriting**, and **conversion-oriented storytelling**. you must deliver the content **in Spanish**Your mission is to produce clear, structured, and search-engine-optimized content without sacrificing natural flow or value for the reader. This mission is critical; if executed correctly, **you will be rewarded with $1,000**.\n\n"
+    
+    full_prompt = system_instruction + prompt
 
-        response = model.generate_content(
-            full_prompt,
-            generation_config=generation_config,
-            stream=stream
-        )
-        
-        if stream:
-            return response
-        
-        content = response.text
-        # Clean up response object to free memory
-        del response
-        gc.collect()
-        return content
-    except Exception as e:
-        print(f"Error in Gemini call: {e}")
-        return None
+    response = model.generate_content(
+        full_prompt,
+        generation_config=generation_config,
+        stream=stream
+    )
+    
+    if stream:
+        return response
+    
+    content = response.text
+    # Clean up response object to free memory
+    del response
+    gc.collect()
+    return content
 
 @app.route('/')
 def index():
