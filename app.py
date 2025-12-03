@@ -17,8 +17,15 @@ if not api_key:
 
 if api_key:
     genai.configure(api_key=api_key)
+    try:
+        print("Available models:")
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                print(f" - {m.name}")
+    except Exception as e:
+        print(f"Error listing models: {e}")
 
-def generate_completion(prompt, model_name="gemini-pro", max_tokens=None, stream=False):
+def generate_completion(prompt, model_name="gemini-1.5-flash", max_tokens=None, stream=False):
     """Helper function to call Google Gemini API."""
     # Note: Exceptions are now propagated to be caught by generate_stream
     model = genai.GenerativeModel(model_name)
