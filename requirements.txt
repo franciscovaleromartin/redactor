@@ -1,4 +1,5 @@
 flask
-openai
+google-generativeai>=0.7.0
 python-dotenv
+waitress
 gunicorn
