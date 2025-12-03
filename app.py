@@ -27,14 +27,15 @@ if api_key:
 
 # Try models in order of preference until one works
 AVAILABLE_MODELS = [
-    "gemini-2.0-flash-exp",  # Latest experimental
-    "gemini-1.5-flash",      # Fast and efficient
-    "gemini-1.5-pro",        # More capable
-    "gemini-1.0-pro",        # Stable fallback
+    "models/gemini-3-pro-preview",              # Gemini 3! (newest)
+    "models/gemini-2.5-flash-preview-09-2025",  # Gemini 2.5
+    "models/gemini-pro-latest",                 # Latest stable alias
+    "models/gemini-flash-latest",               # Fast alias
 ]
 
 def get_working_model():
     """Find the first working model from the available list."""
+    import time
     for model_name in AVAILABLE_MODELS:
         try:
             model = genai.GenerativeModel(model_name)
@@ -43,9 +44,15 @@ def get_working_model():
             print(f"✓ Using model: {model_name}")
             return model_name
         except Exception as e:
-            print(f"✗ Model {model_name} not available: {e}")
+            error_str = str(e)
+            if "429" in error_str or "quota" in error_str.lower():
+                print(f"⚠ Model {model_name} rate limited, trying next...")
+            elif "404" in error_str:
+                print(f"✗ Model {model_name} not found")
+            else:
+                print(f"✗ Model {model_name} error: {e}")
             continue
-    raise Exception("No working Gemini models found. Please check your API key.")
+    raise Exception("No working Gemini models found. Please check your API key or wait for rate limits to reset.")
 
 # Determine working model at startup
 WORKING_MODEL = None
