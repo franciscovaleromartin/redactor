@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const loader = generateBtn.querySelector('.loader');
     const resultsSection = document.getElementById('resultsSection');
     const articleContent = document.getElementById('articleContent');
-    
+
     // Debug elements
     const debugPlan = document.getElementById('debugPlan');
     const debugDraft = document.getElementById('debugDraft');
@@ -13,12 +13,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        
+
         // Reset UI
         resultsSection.style.display = 'none';
         generateBtn.disabled = true;
-        btnText.textContent = 'Generando... (Esto tomará unos minutos)';
+        btnText.textContent = 'Iniciando...';
         loader.style.display = 'inline-block';
+
+        // Clear previous results
+        articleContent.innerHTML = '';
+        debugPlan.textContent = '';
+        debugDraft.innerHTML = '';
+        debugCritique.textContent = '';
 
         const formData = {
             topic: document.getElementById('topic').value,
@@ -38,19 +44,66 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error('Error en la generación del artículo');
             }
 
-            const data = await response.json();
+            // Read streaming response
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
 
-            // Display Results
-            resultsSection.style.display = 'block';
-            articleContent.innerHTML = data.final_article;
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
 
-            // Fill Debug Info
-            debugPlan.textContent = data.plan;
-            debugDraft.innerHTML = data.draft;
-            debugCritique.textContent = data.critique;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // Keep incomplete line in buffer
 
-            // Scroll to results
-            resultsSection.scrollIntoView({ behavior: 'smooth' });
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+
+                    try {
+                        const data = JSON.parse(line);
+
+                        // Handle errors
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
+
+                        // Update UI based on status
+                        if (data.status === 'phase_1') {
+                            btnText.textContent = 'Fase 1: Planificando...';
+                        } else if (data.status === 'phase_1_done') {
+                            debugPlan.textContent = data.data;
+                        } else if (data.status === 'phase_2') {
+                            btnText.textContent = 'Fase 2: Redactando...';
+                            debugDraft.innerHTML = ''; // Clear previous
+                        } else if (data.status === 'phase_2_stream') {
+                            // Append streaming content to draft debug view
+                            debugDraft.innerHTML += data.chunk.replace(/\n/g, '<br>');
+                        } else if (data.status === 'phase_2_done') {
+                            // Phase 2 complete
+                        } else if (data.status === 'phase_3') {
+                            btnText.textContent = 'Fase 3: Revisando...';
+                        } else if (data.status === 'phase_3_done') {
+                            debugCritique.textContent = data.data;
+                        } else if (data.status === 'phase_4') {
+                            btnText.textContent = 'Fase 4: Finalizando...';
+                            articleContent.innerHTML = ''; // Clear previous
+                        } else if (data.status === 'phase_4_stream') {
+                            // Append streaming content to final article view
+                            articleContent.innerHTML += data.chunk;
+                        } else if (data.status === 'complete') {
+                            // Ensure final clean version is set
+                            articleContent.innerHTML = data.final_article;
+                            btnText.textContent = '¡Completado!';
+                            resultsSection.style.display = 'block';
+                            resultsSection.scrollIntoView({ behavior: 'smooth' });
+                        }
+                    } catch (parseError) {
+                        console.error('Error parsing JSON chunk:', parseError);
+                        console.error('Line:', line);
+                    }
+                }
+            }
 
         } catch (error) {
             alert('Hubo un error: ' + error.message);
