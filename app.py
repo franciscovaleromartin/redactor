@@ -26,12 +26,42 @@ if api_key:
         print(f"Error listing models: {e}")
 
 # Try models in order of preference until one works
+# Try models in order of preference until one works
 AVAILABLE_MODELS = [
-    "models/gemini-3-pro-preview",              # Gemini 3! (newest)
-    "models/gemini-2.5-flash-preview-09-2025",  # Gemini 2.5
-    "models/gemini-pro-latest",                 # Latest stable alias
-    "models/gemini-flash-latest",               # Fast alias
+    "models/gemini-1.5-flash",      # Stable & Fast (Best balance)
+    "models/gemini-1.5-pro",        # Stable & Capable
+    "models/gemini-2.0-flash-exp",  # Experimental (might be stricter)
+    "models/gemini-pro",            # Legacy stable
 ]
+
+# ... (rest of the file) ...
+
+    # Configure safety settings to avoid blocking content
+    safety_settings = [
+        {
+            "category": "HARM_CATEGORY_HARASSMENT",
+            "threshold": "BLOCK_NONE"
+        },
+        {
+            "category": "HARM_CATEGORY_HATE_SPEECH",
+            "threshold": "BLOCK_NONE"
+        },
+        {
+            "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+            "threshold": "BLOCK_NONE"
+        },
+        {
+            "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+            "threshold": "BLOCK_NONE"
+        },
+    ]
+
+    response = model.generate_content(
+        full_prompt,
+        generation_config=generation_config,
+        safety_settings=safety_settings,
+        stream=stream
+    )
 
 def get_working_model():
     """Find the first working model from the available list."""
