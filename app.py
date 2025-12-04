@@ -221,6 +221,47 @@ def upload_to_drive():
         print(f"Drive Upload Error: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/debug-drive', methods=['GET'])
+def debug_drive():
+    try:
+        # Authenticate
+        SCOPES = ['https://www.googleapis.com/auth/drive.file']
+        SERVICE_ACCOUNT_FILE = 'service_account.json'
+        creds = None
+        
+        if os.path.exists(SERVICE_ACCOUNT_FILE):
+            creds = service_account.Credentials.from_service_account_file(
+                SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+        elif os.environ.get('GOOGLE_CREDENTIALS_JSON'):
+            import json
+            creds_info = json.loads(os.environ.get('GOOGLE_CREDENTIALS_JSON'))
+            creds = service_account.Credentials.from_service_account_info(
+                creds_info, scopes=SCOPES)
+        else:
+             return jsonify({"error": "Credentials not found"}), 500
+
+        service = build('drive', 'v3', credentials=creds)
+        
+        # Check Quota
+        about = service.about().get(fields="storageQuota,user").execute()
+        
+        # Check Folder Access
+        FOLDER_ID = '1m0tngamB1UR_NTwerk7L9mUJ95unsUEH'
+        folder_access = "Unknown"
+        try:
+            folder = service.files().get(fileId=FOLDER_ID, fields="name,capabilities").execute()
+            folder_access = folder
+        except Exception as e:
+            folder_access = str(e)
+
+        return jsonify({
+            "user": about.get('user'),
+            "quota": about.get('storageQuota'),
+            "folder_check": folder_access
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/generate', methods=['POST'])
 def generate_article():
     gc.collect()
