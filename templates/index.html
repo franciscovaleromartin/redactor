@@ -12,8 +12,20 @@
 <body>
     <div class="container">
         <header>
-            <h1>Redactor SIDN</h1>
-            <p>Generador de contenido optimizado para SEO con IA</p>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h1>Redactor SIDN</h1>
+                    <p>Generador de contenido optimizado para SEO con IA</p>
+                </div>
+                <div id="driveConnectionStatus" style="text-align: right;">
+                    <button id="connectDriveBtn" class="secondary-btn" style="display: none;">
+                        🔗 Conectar Google Drive
+                    </button>
+                    <div id="connectedIndicator" style="display: none; color: #10b981; font-weight: 600;">
+                        ✓ Google Drive Conectado
+                    </div>
+                </div>
+            </div>
         </header>
 
         <main>

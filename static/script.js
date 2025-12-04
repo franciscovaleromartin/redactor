@@ -6,10 +6,45 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultsSection = document.getElementById('resultsSection');
     const articleContent = document.getElementById('articleContent');
 
+    // Drive connection elements
+    const connectDriveBtn = document.getElementById('connectDriveBtn');
+    const connectedIndicator = document.getElementById('connectedIndicator');
+    const sendToDriveBtn = document.getElementById('sendToDriveBtn');
+
     // Debug elements
     const debugPlan = document.getElementById('debugPlan');
     const debugDraft = document.getElementById('debugDraft');
     const debugCritique = document.getElementById('debugCritique');
+
+    // Check authentication status on page load
+    async function checkAuthStatus() {
+        try {
+            const response = await fetch('/auth-status');
+            const data = await response.json();
+
+            if (data.authenticated) {
+                // User is connected
+                connectDriveBtn.style.display = 'none';
+                connectedIndicator.style.display = 'block';
+            } else {
+                // User is not connected
+                connectDriveBtn.style.display = 'block';
+                connectedIndicator.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Error checking auth status:', error);
+            connectDriveBtn.style.display = 'block';
+            connectedIndicator.style.display = 'none';
+        }
+    }
+
+    // Call on page load
+    checkAuthStatus();
+
+    // Handle connect button click
+    connectDriveBtn.addEventListener('click', () => {
+        window.location.href = '/authorize';
+    });
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -115,10 +150,20 @@ document.addEventListener('DOMContentLoaded', () => {
             loader.style.display = 'none';
         }
     });
-    const sendToDriveBtn = document.getElementById('sendToDriveBtn');
+
+    // Google Drive upload handler
     const driveStatus = document.getElementById('driveStatus');
 
     sendToDriveBtn.addEventListener('click', async () => {
+        // Check if user is authenticated first
+        const authCheck = await fetch('/auth-status');
+        const authData = await authCheck.json();
+
+        if (!authData.authenticated) {
+            driveStatus.innerHTML = '❌ Primero debes <a href="/authorize" style="color: #3b82f6; text-decoration: underline;">conectar Google Drive</a>';
+            return;
+        }
+
         const content = articleContent.innerHTML;
         // Use the suggested title or a default one
         let title = document.getElementById('title').value;
@@ -149,7 +194,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
         } catch (error) {
-            driveStatus.textContent = "❌ Error al guardar: " + error.message;
+            const errorMsg = error.message;
+            if (errorMsg.includes('Not authenticated')) {
+                driveStatus.innerHTML = '❌ Sesión expirada. <a href="/authorize" style="color: #3b82f6; text-decoration: underline;">Reconectar Google Drive</a>';
+            } else {
+                driveStatus.textContent = "❌ Error al guardar: " + errorMsg;
+            }
             sendToDriveBtn.disabled = false;
             sendToDriveBtn.textContent = "Enviar a Google Drive";
         }

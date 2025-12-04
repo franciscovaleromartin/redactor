@@ -1,21 +1,23 @@
 import os
 import gc
 import json
-from flask import Flask, request, jsonify, render_template, stream_with_context, Response
+from flask import Flask, request, jsonify, render_template, stream_with_context, Response, session, redirect, url_for
 import google.generativeai as genai
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import io
-import pickle
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
+
+# Configure Flask session
+app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
 
 # Initialize Gemini
 api_key = os.environ.get("api_key")
@@ -153,44 +155,142 @@ def generate_completion(prompt, model_name=None, max_tokens=None, stream=False):
 # OAuth 2.0 Configuration
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 OAUTH_CREDENTIALS_FILE = 'oauth_credentials.json'
-TOKEN_FILE = 'token.json'
+
+def get_oauth_config():
+    """Load OAuth configuration from file or environment variable."""
+    if os.path.exists(OAUTH_CREDENTIALS_FILE):
+        with open(OAUTH_CREDENTIALS_FILE, 'r') as f:
+            return json.load(f)
+    elif os.environ.get('OAUTH_CREDENTIALS_JSON'):
+        return json.loads(os.environ.get('OAUTH_CREDENTIALS_JSON'))
+    else:
+        raise Exception("OAuth credentials not found. Please provide 'oauth_credentials.json' file or set OAUTH_CREDENTIALS_JSON environment variable.")
+
+def credentials_to_dict(credentials):
+    """Convert credentials to a dictionary for session storage."""
+    return {
+        'token': credentials.token,
+        'refresh_token': credentials.refresh_token,
+        'token_uri': credentials.token_uri,
+        'client_id': credentials.client_id,
+        'client_secret': credentials.client_secret,
+        'scopes': credentials.scopes
+    }
 
 def get_drive_service():
-    """Get authenticated Google Drive service using OAuth 2.0."""
-    creds = None
+    """Get authenticated Google Drive service using OAuth 2.0 from session."""
+    if 'credentials' not in session:
+        raise Exception("Not authenticated. Please authorize first by visiting /authorize")
     
-    # Load existing token if available
-    if os.path.exists(TOKEN_FILE):
-        with open(TOKEN_FILE, 'rb') as token:
-            creds = pickle.load(token)
+    # Load credentials from session
+    creds = Credentials(**session['credentials'])
     
-    # If there are no valid credentials, let the user log in
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            # Refresh the token
-            creds.refresh(Request())
-        else:
-            # Start OAuth flow
-            # Try to load from file first, then from environment variable
-            if os.path.exists(OAUTH_CREDENTIALS_FILE):
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    OAUTH_CREDENTIALS_FILE, SCOPES)
-            elif os.environ.get('OAUTH_CREDENTIALS_JSON'):
-                # Load from environment variable (for Render/production)
-                import json
-                creds_info = json.loads(os.environ.get('OAUTH_CREDENTIALS_JSON'))
-                flow = InstalledAppFlow.from_client_config(creds_info, SCOPES)
-            else:
-                raise Exception(f"OAuth credentials not found. Please provide '{OAUTH_CREDENTIALS_FILE}' file or set OAUTH_CREDENTIALS_JSON environment variable.")
-            
-            creds = flow.run_local_server(port=0)
-        
-        # Save the credentials for the next run
-        with open(TOKEN_FILE, 'wb') as token:
-            pickle.dump(creds, token)
+    # Refresh if expired
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        session['credentials'] = credentials_to_dict(creds)
     
     service = build('drive', 'v3', credentials=creds)
     return service
+
+@app.route('/authorize')
+def authorize():
+    """Initiate OAuth 2.0 authorization flow."""
+    try:
+        # Get OAuth config
+        oauth_config = get_oauth_config()
+        
+        # Determine redirect URI based on environment
+        if request.host.startswith('localhost') or request.host.startswith('127.0.0.1'):
+            redirect_uri = url_for('oauth2callback', _external=True, _scheme='http')
+        else:
+            redirect_uri = url_for('oauth2callback', _external=True, _scheme='https')
+        
+        # Create flow instance
+        flow = Flow.from_client_config(
+            oauth_config,
+            scopes=SCOPES,
+            redirect_uri=redirect_uri
+        )
+        
+        # Generate authorization URL
+        authorization_url, state = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true',
+            prompt='consent'  # Force to show consent screen to get refresh token
+        )
+        
+        # Store state in session for CSRF protection
+        session['state'] = state
+        
+        return redirect(authorization_url)
+        
+    except Exception as e:
+        return jsonify({"error": f"Authorization error: {str(e)}"}), 500
+
+@app.route('/oauth2callback')
+def oauth2callback():
+    """Handle OAuth 2.0 callback from Google."""
+    try:
+        # Verify state to prevent CSRF
+        state = session.get('state')
+        if not state:
+            return jsonify({"error": "State not found in session"}), 400
+        
+        # Get OAuth config
+        oauth_config = get_oauth_config()
+        
+        # Determine redirect URI (must match the one used in /authorize)
+        if request.host.startswith('localhost') or request.host.startswith('127.0.0.1'):
+            redirect_uri = url_for('oauth2callback', _external=True, _scheme='http')
+        else:
+            redirect_uri = url_for('oauth2callback', _external=True, _scheme='https')
+        
+        # Create flow instance
+        flow = Flow.from_client_config(
+            oauth_config,
+            scopes=SCOPES,
+            state=state,
+            redirect_uri=redirect_uri
+        )
+        
+        # Exchange authorization code for tokens
+        flow.fetch_token(authorization_response=request.url)
+        
+        # Store credentials in session
+        credentials = flow.credentials
+        session['credentials'] = credentials_to_dict(credentials)
+        
+        # Redirect back to home page
+        return redirect('/')
+        
+    except Exception as e:
+        return jsonify({"error": f"Callback error: {str(e)}"}), 500
+
+@app.route('/auth-status')
+def auth_status():
+    """Check if user is authenticated with Google Drive."""
+    try:
+        if 'credentials' not in session:
+            return jsonify({"authenticated": False})
+        
+        # Check if credentials are valid
+        creds = Credentials(**session['credentials'])
+        
+        # Try to refresh if expired
+        if creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+                session['credentials'] = credentials_to_dict(creds)
+            except:
+                # Refresh failed, need to re-authorize
+                session.pop('credentials', None)
+                return jsonify({"authenticated": False})
+        
+        return jsonify({"authenticated": True})
+        
+    except Exception as e:
+        return jsonify({"authenticated": False, "error": str(e)})
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
