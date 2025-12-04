@@ -246,7 +246,7 @@ Incluye:
 – Ejemplos concretos para mejorar calidad.
 No escribas el contenido. Solo el plan."""
 
-            plan = generate_completion(prompt_phase_1, max_tokens=2000)
+            plan = generate_completion(prompt_phase_1, max_tokens=1500)
             if not plan:
                 yield json.dumps({"error": "Error en Fase 1: No se pudo generar el plan"}) + "\n"
                 return
@@ -270,7 +270,7 @@ Aquí tienes el esquema:
 Escribe el artículo completo en formato HTML (usa etiquetas h1, h2, p, ul, li, etc. pero sin html/body tags)."""
 
             # Stream Phase 2 content
-            stream = generate_completion(prompt_phase_2, max_tokens=2500, stream=True)
+            stream = generate_completion(prompt_phase_2, max_tokens=2000, stream=True)
             if not stream:
                 yield json.dumps({"error": "Error en Fase 2: No se pudo iniciar la redacción"}) + "\n"
                 return
@@ -314,7 +314,7 @@ Sugiere correcciones concretas sin reescribir todo el texto.
 Aquí está el artículo:
 {truncated_draft}"""
 
-            critique = generate_completion(prompt_phase_3, max_tokens=2000)
+            critique = generate_completion(prompt_phase_3, max_tokens=1500)
             if not critique:
                 print("Fallo en Fase 3: Crítica vacía") # Debug log
                 yield json.dumps({"error": "Error en Fase 3: No se pudo generar la crítica"}) + "\n"
@@ -343,7 +343,7 @@ Revisión:
 
             # Stream Phase 4 content
             # Stream Phase 4 content
-            stream_final = generate_completion(prompt_phase_4, max_tokens=4000, stream=True)
+            stream_final = generate_completion(prompt_phase_4, max_tokens=3000, stream=True)
             if not stream_final:
                 yield json.dumps({"error": "Error en Fase 4: No se pudo iniciar la versión final"}) + "\n"
                 return

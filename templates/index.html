@@ -35,6 +35,11 @@
                         <span class="btn-text">Generar Artículo</span>
                         <span class="loader" style="display: none;"></span>
                     </button>
+                    <button type="button" id="sendToDriveBtn" class="secondary-btn"
+                        style="display: none; margin-left: 10px;">
+                        Enviar a Google Drive
+                    </button>
+                    <div id="driveStatus" style="margin-top: 10px;"></div>
                 </form>
             </section>
 
@@ -49,12 +54,6 @@
                 <div class="result-container">
                     <h2>Artículo Generado</h2>
                     <div id="articleContent" class="article-content"></div>
-                    <div class="actions" style="margin-top: 20px;">
-                        <button id="sendToDriveBtn" class="secondary-btn" style="display: none;">
-                            Enviar a Google Drive
-                        </button>
-                        <div id="driveStatus" style="margin-top: 10px;"></div>
-                    </div>
                 </div>
 
                 <details class="debug-details">

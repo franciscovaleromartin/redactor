@@ -93,16 +93,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             articleContent.innerHTML += data.chunk;
                         } else if (data.status === 'complete') {
                             // Ensure final clean version is set
-                            // Ensure final clean version is set
                             articleContent.innerHTML = data.final_article;
                             btnText.textContent = '¡Completado!';
                             resultsSection.style.display = 'block';
                             document.getElementById('sendToDriveBtn').style.display = 'inline-block';
 
-                            // Scroll to the bottom of the results to see the button
-                            setTimeout(() => {
-                                document.getElementById('sendToDriveBtn').scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            }, 100);
+                            resultsSection.scrollIntoView({ behavior: 'smooth' });
                         }
                     } catch (parseError) {
                         console.error('Error parsing JSON chunk:', parseError);
