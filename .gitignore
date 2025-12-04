@@ -33,3 +33,8 @@ instance/
 dist/
 build/
 *.egg-info/
+
+# Google OAuth Credentials and Tokens
+oauth_credentials.json
+token.json
+service_account.json

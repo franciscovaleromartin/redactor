@@ -3,10 +3,13 @@ import gc
 import json
 from flask import Flask, request, jsonify, render_template, stream_with_context, Response
 import google.generativeai as genai
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import io
+import pickle
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -147,6 +150,48 @@ def generate_completion(prompt, model_name=None, max_tokens=None, stream=False):
     gc.collect()
     return content
 
+# OAuth 2.0 Configuration
+SCOPES = ['https://www.googleapis.com/auth/drive.file']
+OAUTH_CREDENTIALS_FILE = 'oauth_credentials.json'
+TOKEN_FILE = 'token.json'
+
+def get_drive_service():
+    """Get authenticated Google Drive service using OAuth 2.0."""
+    creds = None
+    
+    # Load existing token if available
+    if os.path.exists(TOKEN_FILE):
+        with open(TOKEN_FILE, 'rb') as token:
+            creds = pickle.load(token)
+    
+    # If there are no valid credentials, let the user log in
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            # Refresh the token
+            creds.refresh(Request())
+        else:
+            # Start OAuth flow
+            # Try to load from file first, then from environment variable
+            if os.path.exists(OAUTH_CREDENTIALS_FILE):
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    OAUTH_CREDENTIALS_FILE, SCOPES)
+            elif os.environ.get('OAUTH_CREDENTIALS_JSON'):
+                # Load from environment variable (for Render/production)
+                import json
+                creds_info = json.loads(os.environ.get('OAUTH_CREDENTIALS_JSON'))
+                flow = InstalledAppFlow.from_client_config(creds_info, SCOPES)
+            else:
+                raise Exception(f"OAuth credentials not found. Please provide '{OAUTH_CREDENTIALS_FILE}' file or set OAUTH_CREDENTIALS_JSON environment variable.")
+            
+            creds = flow.run_local_server(port=0)
+        
+        # Save the credentials for the next run
+        with open(TOKEN_FILE, 'wb') as token:
+            pickle.dump(creds, token)
+    
+    service = build('drive', 'v3', credentials=creds)
+    return service
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     topic = ""
@@ -166,47 +211,32 @@ def upload_to_drive():
         data = request.json
         content = data.get('content')
         title = data.get('title', 'Articulo Generado')
+        folder_id = data.get('folder_id', None)  # Optional: specify target folder
         
         if not content:
             return jsonify({"error": "No content provided"}), 400
 
-        # Authenticate with Service Account
-        SCOPES = ['https://www.googleapis.com/auth/drive.file']
-        SERVICE_ACCOUNT_FILE = 'service_account.json'
-        
-        creds = None
-        
-        if os.path.exists(SERVICE_ACCOUNT_FILE):
-            creds = service_account.Credentials.from_service_account_file(
-                SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-        elif os.environ.get('GOOGLE_CREDENTIALS_JSON'):
-            # Load from environment variable (useful for Render/Heroku)
-            import json
-            creds_info = json.loads(os.environ.get('GOOGLE_CREDENTIALS_JSON'))
-            creds = service_account.Credentials.from_service_account_info(
-                creds_info, scopes=SCOPES)
-        else:
-             return jsonify({"error": "Credentials not found (service_account.json or GOOGLE_CREDENTIALS_JSON)"}), 500
-
-        service = build('drive', 'v3', credentials=creds)
-        
-        # Folder ID provided by user
-        FOLDER_ID = '1m0tngamB1UR_NTwerk7L9mUJ95unsUEH'
+        # Get authenticated Drive service with OAuth 2.0
+        service = get_drive_service()
         
         # Create file metadata
         file_metadata = {
             'name': title,
-            'parents': [FOLDER_ID],
-            'mimeType': 'application/vnd.google-apps.document' # Convert to Google Doc
+            'mimeType': 'application/vnd.google-apps.document'  # Convert to Google Doc
         }
         
+        # Add parent folder if specified
+        if folder_id:
+            file_metadata['parents'] = [folder_id]
+        
         # Create media
-        # We need to wrap the HTML content in a basic HTML structure for Drive to convert it properly
+        # Wrap the HTML content in a basic HTML structure for Drive to convert it properly
         full_html = f"<html><body>{content}</body></html>"
         media = MediaIoBaseUpload(io.BytesIO(full_html.encode('utf-8')),
                                   mimetype='text/html',
                                   resumable=True)
         
+        # Upload file
         file = service.files().create(body=file_metadata,
                                       media_body=media,
                                       fields='id, webViewLink').execute()
@@ -224,40 +254,21 @@ def upload_to_drive():
 @app.route('/debug-drive', methods=['GET'])
 def debug_drive():
     try:
-        # Authenticate
-        SCOPES = ['https://www.googleapis.com/auth/drive.file']
-        SERVICE_ACCOUNT_FILE = 'service_account.json'
-        creds = None
+        # Get authenticated Drive service with OAuth 2.0
+        service = get_drive_service()
         
-        if os.path.exists(SERVICE_ACCOUNT_FILE):
-            creds = service_account.Credentials.from_service_account_file(
-                SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-        elif os.environ.get('GOOGLE_CREDENTIALS_JSON'):
-            import json
-            creds_info = json.loads(os.environ.get('GOOGLE_CREDENTIALS_JSON'))
-            creds = service_account.Credentials.from_service_account_info(
-                creds_info, scopes=SCOPES)
-        else:
-             return jsonify({"error": "Credentials not found"}), 500
-
-        service = build('drive', 'v3', credentials=creds)
-        
-        # Check Quota
+        # Check Quota and User Info
         about = service.about().get(fields="storageQuota,user").execute()
         
-        # Check Folder Access
-        FOLDER_ID = '1m0tngamB1UR_NTwerk7L9mUJ95unsUEH'
-        folder_access = "Unknown"
-        try:
-            folder = service.files().get(fileId=FOLDER_ID, fields="name,capabilities").execute()
-            folder_access = folder
-        except Exception as e:
-            folder_access = str(e)
+        # Check if token file exists
+        token_status = "Token exists" if os.path.exists(TOKEN_FILE) else "No token found"
+        oauth_creds_status = "OAuth credentials exist" if os.path.exists(OAUTH_CREDENTIALS_FILE) else "OAuth credentials not found"
 
         return jsonify({
             "user": about.get('user'),
             "quota": about.get('storageQuota'),
-            "folder_check": folder_access
+            "token_status": token_status,
+            "oauth_credentials_status": oauth_creds_status
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
