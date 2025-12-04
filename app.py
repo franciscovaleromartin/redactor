@@ -117,13 +117,31 @@ def generate_completion(prompt, model_name=None, max_tokens=None, stream=False):
     if stream:
         return response
     
-    # Check if response was blocked
-    if not response.candidates or not response.candidates[0].content.parts:
-        # Content was blocked by safety filters
-        finish_reason = response.candidates[0].finish_reason if response.candidates else "UNKNOWN"
-        raise Exception(f"Content blocked by Gemini safety filters (finish_reason: {finish_reason}). Try rephrasing your topic.")
+    # Check if response was blocked or incomplete
+    if not response.candidates:
+        raise Exception("No candidates returned by the model.")
+
+    candidate = response.candidates[0]
+    finish_reason = candidate.finish_reason
     
+    # Debug logging
+    print(f"Generation finish_reason: {finish_reason}")
+    
+    if not candidate.content.parts:
+        # If no content parts, it's a hard failure
+        if finish_reason == 3: # SAFETY
+            raise Exception(f"Content blocked by safety filters. Reason: {finish_reason}")
+        elif finish_reason == 2: # MAX_TOKENS
+             raise Exception(f"Content truncated (Max Tokens) and empty. Reason: {finish_reason}")
+        else:
+            raise Exception(f"Generation failed with no content. Reason: {finish_reason}")
+
     content = response.text
+    
+    # If MAX_TOKENS (2) but we have content, we might want to warn but proceed
+    if finish_reason == 2:
+        print("WARNING: Generation truncated due to max tokens.")
+
     # Clean up response object to free memory
     del response
     gc.collect()
@@ -228,7 +246,7 @@ Incluye:
 – Ejemplos concretos para mejorar calidad.
 No escribas el contenido. Solo el plan."""
 
-            plan = generate_completion(prompt_phase_1, max_tokens=1000)
+            plan = generate_completion(prompt_phase_1, max_tokens=2000)
             if not plan:
                 yield json.dumps({"error": "Error en Fase 1: No se pudo generar el plan"}) + "\n"
                 return
@@ -296,7 +314,7 @@ Sugiere correcciones concretas sin reescribir todo el texto.
 Aquí está el artículo:
 {truncated_draft}"""
 
-            critique = generate_completion(prompt_phase_3, max_tokens=1000)
+            critique = generate_completion(prompt_phase_3, max_tokens=2000)
             if not critique:
                 print("Fallo en Fase 3: Crítica vacía") # Debug log
                 yield json.dumps({"error": "Error en Fase 3: No se pudo generar la crítica"}) + "\n"
