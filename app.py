@@ -342,7 +342,8 @@ Revisión:
 {critique}"""
 
             # Stream Phase 4 content
-            stream_final = generate_completion(prompt_phase_4, max_tokens=3000, stream=True)
+            # Stream Phase 4 content
+            stream_final = generate_completion(prompt_phase_4, max_tokens=4000, stream=True)
             if not stream_final:
                 yield json.dumps({"error": "Error en Fase 4: No se pudo iniciar la versión final"}) + "\n"
                 return
@@ -354,6 +355,10 @@ Revisión:
                     content_chunk = chunk.text
                     final_article += content_chunk
                     yield json.dumps({"status": "phase_4_stream", "chunk": content_chunk}) + "\n"
+
+            if not final_article:
+                 yield json.dumps({"error": "Error en Fase 4: El artículo final se generó vacío."}) + "\n"
+                 return
 
             # Cleanup
             final_article = final_article.replace("```html", "").replace("```", "")
