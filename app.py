@@ -156,12 +156,20 @@ def upload_to_drive():
         SCOPES = ['https://www.googleapis.com/auth/drive.file']
         SERVICE_ACCOUNT_FILE = 'service_account.json'
         
-        if not os.path.exists(SERVICE_ACCOUNT_FILE):
-             return jsonify({"error": "service_account.json not found"}), 500
-
-        creds = service_account.Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+        creds = None
         
+        if os.path.exists(SERVICE_ACCOUNT_FILE):
+            creds = service_account.Credentials.from_service_account_file(
+                SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+        elif os.environ.get('GOOGLE_CREDENTIALS_JSON'):
+            # Load from environment variable (useful for Render/Heroku)
+            import json
+            creds_info = json.loads(os.environ.get('GOOGLE_CREDENTIALS_JSON'))
+            creds = service_account.Credentials.from_service_account_info(
+                creds_info, scopes=SCOPES)
+        else:
+             return jsonify({"error": "Credentials not found (service_account.json or GOOGLE_CREDENTIALS_JSON)"}), 500
+
         service = build('drive', 'v3', credentials=creds)
         
         # Folder ID provided by user
