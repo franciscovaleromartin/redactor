@@ -31,14 +31,15 @@
                             placeholder="Ej: Guía completa de Marketing Digital 2024" value="{{ title }}">
                     </div>
 
-                    <button type="submit" id="generateBtn">
-                        <span class="btn-text">Generar Artículo</span>
-                        <span class="loader" style="display: none;"></span>
-                    </button>
-                    <button type="button" id="sendToDriveBtn" class="secondary-btn"
-                        style="display: none; margin-left: 10px;">
-                        Enviar a Google Drive
-                    </button>
+                    <div class="button-group" style="display: flex; gap: 10px; align-items: center; margin-top: 20px;">
+                        <button type="submit" id="generateBtn">
+                            <span class="btn-text">Generar Artículo</span>
+                            <span class="loader" style="display: none;"></span>
+                        </button>
+                        <button type="button" id="sendToDriveBtn" class="secondary-btn" disabled>
+                            Enviar a Google Drive
+                        </button>
+                    </div>
                     <div id="driveStatus" style="margin-top: 10px;"></div>
                 </form>
             </section>

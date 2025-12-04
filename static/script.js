@@ -96,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             articleContent.innerHTML = data.final_article;
                             btnText.textContent = '¡Completado!';
                             resultsSection.style.display = 'block';
-                            document.getElementById('sendToDriveBtn').style.display = 'inline-block';
+                            document.getElementById('sendToDriveBtn').disabled = false;
 
                             resultsSection.scrollIntoView({ behavior: 'smooth' });
                         }
