@@ -3,6 +3,10 @@ import gc
 import json
 from flask import Flask, request, jsonify, render_template, stream_with_context, Response
 import google.generativeai as genai
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+import io
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -27,10 +31,10 @@ if api_key:
 
 # Try models in order of preference until one works
 AVAILABLE_MODELS = [
-    "models/gemini-1.5-flash",      # Stable & Fast (Best balance)
-    "models/gemini-1.5-pro",        # Stable & Capable
-    "models/gemini-2.0-flash-exp",  # Experimental (might be stricter)
-    "models/gemini-pro",            # Legacy stable
+    "models/gemini-2.0-flash",      # New stable
+    "models/gemini-2.0-flash-exp",  # Experimental
+    "models/gemini-2.5-flash",      # Latest
+    "models/gemini-2.0-pro-exp",    # Pro Experimental
 ]
 
 def get_working_model():
@@ -125,9 +129,71 @@ def generate_completion(prompt, model_name=None, max_tokens=None, stream=False):
     gc.collect()
     return content
 
-@app.route('/')
+@app.route('/', methods=['GET', 'POST'])
 def index():
-    return render_template('index.html')
+    topic = ""
+    title = ""
+    
+    if request.method == 'POST':
+        if request.is_json:
+            data = request.json
+            topic = data.get('palabra_clave', '')
+            title = data.get('titulo_sugerido', '')
+    
+    return render_template('index.html', topic=topic, title=title)
+
+@app.route('/upload-to-drive', methods=['POST'])
+def upload_to_drive():
+    try:
+        data = request.json
+        content = data.get('content')
+        title = data.get('title', 'Articulo Generado')
+        
+        if not content:
+            return jsonify({"error": "No content provided"}), 400
+
+        # Authenticate with Service Account
+        SCOPES = ['https://www.googleapis.com/auth/drive.file']
+        SERVICE_ACCOUNT_FILE = 'service_account.json'
+        
+        if not os.path.exists(SERVICE_ACCOUNT_FILE):
+             return jsonify({"error": "service_account.json not found"}), 500
+
+        creds = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+        
+        service = build('drive', 'v3', credentials=creds)
+        
+        # Folder ID provided by user
+        FOLDER_ID = '1m0tngamB1UR_NTwerk7L9mUJ95unsUEH'
+        
+        # Create file metadata
+        file_metadata = {
+            'name': title,
+            'parents': [FOLDER_ID],
+            'mimeType': 'application/vnd.google-apps.document' # Convert to Google Doc
+        }
+        
+        # Create media
+        # We need to wrap the HTML content in a basic HTML structure for Drive to convert it properly
+        full_html = f"<html><body>{content}</body></html>"
+        media = MediaIoBaseUpload(io.BytesIO(full_html.encode('utf-8')),
+                                  mimetype='text/html',
+                                  resumable=True)
+        
+        file = service.files().create(body=file_metadata,
+                                      media_body=media,
+                                      fields='id, webViewLink').execute()
+                                      
+        return jsonify({
+            "success": True, 
+            "fileId": file.get('id'), 
+            "link": file.get('webViewLink')
+        })
+        
+    except Exception as e:
+        print(f"Drive Upload Error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/generate', methods=['POST'])
 def generate_article():

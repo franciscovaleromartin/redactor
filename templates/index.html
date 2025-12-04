@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -19,12 +21,14 @@
                 <form id="articleForm">
                     <div class="form-group">
                         <label for="topic">Tema / Palabras Clave</label>
-                        <input type="text" id="topic" name="topic" placeholder="Ej: Marketing Digital, SEO, IA" required>
+                        <input type="text" id="topic" name="topic" placeholder="Ej: Marketing Digital, SEO, IA"
+                            value="{{ topic }}" required>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="title">Título Sugerido (Opcional)</label>
-                        <input type="text" id="title" name="title" placeholder="Ej: Guía completa de Marketing Digital 2024">
+                        <input type="text" id="title" name="title"
+                            placeholder="Ej: Guía completa de Marketing Digital 2024" value="{{ title }}">
                     </div>
 
                     <button type="submit" id="generateBtn">
@@ -45,6 +49,12 @@
                 <div class="result-container">
                     <h2>Artículo Generado</h2>
                     <div id="articleContent" class="article-content"></div>
+                    <div class="actions" style="margin-top: 20px;">
+                        <button id="sendToDriveBtn" class="secondary-btn" style="display: none;">
+                            Enviar a Google Drive
+                        </button>
+                        <div id="driveStatus" style="margin-top: 10px;"></div>
+                    </div>
                 </div>
 
                 <details class="debug-details">
@@ -63,4 +73,5 @@
     </div>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
+
 </html>

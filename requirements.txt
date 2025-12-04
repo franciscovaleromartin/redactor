@@ -3,3 +3,6 @@ google-generativeai>=0.7.0
 python-dotenv
 waitress
 gunicorn
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib

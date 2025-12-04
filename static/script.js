@@ -96,6 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             articleContent.innerHTML = data.final_article;
                             btnText.textContent = '¡Completado!';
                             resultsSection.style.display = 'block';
+                            document.getElementById('sendToDriveBtn').style.display = 'inline-block';
                             resultsSection.scrollIntoView({ behavior: 'smooth' });
                         }
                     } catch (parseError) {
@@ -111,6 +112,45 @@ document.addEventListener('DOMContentLoaded', () => {
             generateBtn.disabled = false;
             btnText.textContent = 'Generar Artículo';
             loader.style.display = 'none';
+        }
+    });
+    const sendToDriveBtn = document.getElementById('sendToDriveBtn');
+    const driveStatus = document.getElementById('driveStatus');
+
+    sendToDriveBtn.addEventListener('click', async () => {
+        const content = articleContent.innerHTML;
+        // Use the suggested title or a default one
+        let title = document.getElementById('title').value;
+        if (!title) {
+            title = "Articulo - " + document.getElementById('topic').value;
+        }
+
+        sendToDriveBtn.disabled = true;
+        sendToDriveBtn.textContent = "Enviando...";
+        driveStatus.textContent = "";
+
+        try {
+            const response = await fetch('/upload-to-drive', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ content, title })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                driveStatus.innerHTML = `✅ Guardado en Drive: <a href="${result.link}" target="_blank">Ver documento</a>`;
+                sendToDriveBtn.textContent = "Enviado";
+            } else {
+                throw new Error(result.error || "Error desconocido");
+            }
+
+        } catch (error) {
+            driveStatus.textContent = "❌ Error al guardar: " + error.message;
+            sendToDriveBtn.disabled = false;
+            sendToDriveBtn.textContent = "Enviar a Google Drive";
         }
     });
 });
