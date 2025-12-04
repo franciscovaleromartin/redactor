@@ -46,6 +46,39 @@ document.addEventListener('DOMContentLoaded', () => {
         window.location.href = '/authorize';
     });
 
+    // Handle disconnect button click
+    const disconnectDriveBtn = document.getElementById('disconnectDriveBtn');
+    disconnectDriveBtn.addEventListener('click', async () => {
+        try {
+            const response = await fetch('/disconnect-drive', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                // Update UI to show disconnected state
+                connectDriveBtn.style.display = 'block';
+                connectedIndicator.style.display = 'none';
+
+                // Disable send to drive button if visible
+                if (sendToDriveBtn) {
+                    sendToDriveBtn.disabled = true;
+                }
+
+                alert('Desconectado de Google Drive exitosamente');
+            } else {
+                alert('Error al desconectar: ' + result.message);
+            }
+        } catch (error) {
+            console.error('Error disconnecting:', error);
+            alert('Error al desconectar de Google Drive');
+        }
+    });
+
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
 

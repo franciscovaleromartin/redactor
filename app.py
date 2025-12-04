@@ -193,6 +193,25 @@ def get_drive_service():
     service = build('drive', 'v3', credentials=creds)
     return service
 
+def find_or_create_folder(service, folder_name='redactor'):
+    """Find or create a folder in Google Drive by name."""
+    # Search for folder by name
+    query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    results = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
+    folders = results.get('files', [])
+    
+    if folders:
+        # Folder exists, return the first match
+        return folders[0]['id']
+    else:
+        # Create the folder
+        file_metadata = {
+            'name': folder_name,
+            'mimeType': 'application/vnd.google-apps.folder'
+        }
+        folder = service.files().create(body=file_metadata, fields='id').execute()
+        return folder.get('id')
+
 @app.route('/authorize')
 def authorize():
     """Initiate OAuth 2.0 authorization flow."""
@@ -292,6 +311,18 @@ def auth_status():
     except Exception as e:
         return jsonify({"authenticated": False, "error": str(e)})
 
+@app.route('/disconnect-drive', methods=['POST'])
+def disconnect_drive():
+    """Disconnect user from Google Drive by clearing session credentials."""
+    try:
+        if 'credentials' in session:
+            session.pop('credentials', None)
+            return jsonify({"success": True, "message": "Disconnected from Google Drive"})
+        else:
+            return jsonify({"success": False, "message": "Not connected"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     topic = ""
@@ -311,7 +342,6 @@ def upload_to_drive():
         data = request.json
         content = data.get('content')
         title = data.get('title', 'Articulo Generado')
-        folder_id = data.get('folder_id', None)  # Optional: specify target folder
         
         if not content:
             return jsonify({"error": "No content provided"}), 400
@@ -319,15 +349,15 @@ def upload_to_drive():
         # Get authenticated Drive service with OAuth 2.0
         service = get_drive_service()
         
+        # Find or create 'redactor' folder
+        folder_id = find_or_create_folder(service, 'redactor')
+        
         # Create file metadata
         file_metadata = {
             'name': title,
-            'mimeType': 'application/vnd.google-apps.document'  # Convert to Google Doc
+            'mimeType': 'application/vnd.google-apps.document',  # Convert to Google Doc
+            'parents': [folder_id]  # Always save to 'redactor' folder
         }
-        
-        # Add parent folder if specified
-        if folder_id:
-            file_metadata['parents'] = [folder_id]
         
         # Create media
         # Wrap the HTML content in a basic HTML structure for Drive to convert it properly
