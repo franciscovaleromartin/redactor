@@ -330,16 +330,42 @@ def disconnect_drive():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+DRAFT_FILE = 'latest_draft.json'
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     topic = ""
     title = ""
     
     if request.method == 'POST':
+        # Handle data from Google Sheets or external sources
         if request.is_json:
-            data = request.json
-            topic = data.get('palabra_clave', '')
-            title = data.get('titulo_sugerido', '')
+            try:
+                data = request.json
+                # Extract and map fields (Sheets sends 'palabra_clave' and 'titulo_sugerido')
+                draft_data = {
+                    'topic': data.get('palabra_clave', ''),
+                    'title': data.get('titulo_sugerido', '')
+                }
+                
+                # Save to file for persistence
+                with open(DRAFT_FILE, 'w') as f:
+                    json.dump(draft_data, f)
+                
+                return jsonify({"status": "received", "message": "Datos guardados correctamente"})
+            except Exception as e:
+                return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": "JSON required"}), 400
+            
+    # GET request: Load the latest draft if it exists
+    if os.path.exists(DRAFT_FILE):
+        try:
+            with open(DRAFT_FILE, 'r') as f:
+                draft_data = json.load(f)
+                topic = draft_data.get('topic', '')
+                title = draft_data.get('title', '')
+        except Exception as e:
+            print(f"Error reading draft file: {e}")
     
     return render_template('index.html', topic=topic, title=title)
 
