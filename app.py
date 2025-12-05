@@ -153,7 +153,7 @@ def generate_completion(prompt, model_name=None, max_tokens=None, stream=False):
     return content
 
 # OAuth 2.0 Configuration
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
+SCOPES = ['https://www.googleapis.com/auth/drive']
 OAUTH_CREDENTIALS_FILE = 'oauth_credentials.json'
 
 def get_oauth_config():
@@ -195,16 +195,19 @@ def get_drive_service():
 
 def find_or_create_folder(service, folder_name='redactor'):
     """Find or create a folder in Google Drive by name."""
-    # Search for folder by name
-    query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    # Search for folder by name (case-insensitive-ish: check for 'redactor' and 'Redactor')
+    # Removed 'root' in parents to search the entire drive, not just root
+    query = f"(name='{folder_name}' or name='{folder_name.capitalize()}') and mimeType='application/vnd.google-apps.folder' and trashed=false"
     results = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
     folders = results.get('files', [])
     
     if folders:
         # Folder exists, return the first match
+        print(f"Found existing folder: {folders[0]['name']} (ID: {folders[0]['id']})")
         return folders[0]['id']
     else:
         # Create the folder
+        print(f"Creating new folder: {folder_name}")
         file_metadata = {
             'name': folder_name,
             'mimeType': 'application/vnd.google-apps.folder'
