@@ -14,10 +14,14 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+# Allow OAuth scope to change (e.g. adding metadata access) without crashing
+os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
+
+
 app = Flask(__name__)
 
 # Configure Flask session
-app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
+app.secret_key = os.environ.get('SECRET_KEY', 'redactor_dev_secret_key_static_fallback')
 
 # Initialize Gemini
 api_key = os.environ.get("api_key")
