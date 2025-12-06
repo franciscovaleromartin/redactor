@@ -44,6 +44,7 @@ AVAILABLE_MODELS = [
     "models/gemini-2.0-flash-exp",  # Experimental
     "models/gemini-2.5-flash",      # Latest
     "models/gemini-2.0-pro-exp",    # Pro Experimental
+''' "models/gemini-3.0-pro",        # 3.0 Pro Para produccion '''
 ]
 
 def get_working_model():
@@ -93,6 +94,17 @@ def generate_completion(prompt, model_name=None, max_tokens=None, stream=False):
 
     # System instruction prepended to prompt
     system_instruction = "Eres un redactor profesional especializado en SEO y copywriting. Escribe contenido claro, estructurado y optimizado para buscadores en español.\n\n"
+
+    ''' Para produccion: Este prompt configura la "personalidad" de la IA. Usamos mayúsculas para directrices inquebrantables.
+# ROLE
+You are an Elite SEO Content Strategist and Senior Copywriter specialized in the Spanish market. Your writing style is authoritative, engaging, and indistinguishable from a human expert.
+
+# CORE DIRECTIVES
+1. **E-E-A-T PRINCIPLE**: Demonstrate Experience, Expertise, Authoritativeness, and Trustworthiness in every output.
+2. **LANGUAGE**: All content generated must be in **Native European Spanish** (unless specified otherwise).
+3. **USER-CENTRIC**: Prioritize the user's search intent over keyword stuffing. The content must solve problems.
+4. **FORMAT**: You are a master of HTML structure. Your code is clean, semantic, and accessible.
+    '''
     
     full_prompt = system_instruction + prompt
 
@@ -461,6 +473,34 @@ Incluye:
 – Ejemplos concretos para mejorar calidad.
 No escribas el contenido. Solo el plan."""
 
+            ''' Para produccion: Aquí usamos etiquetas como <topic> para encapsular las variables. Esto reduce alucinaciones.
+# TASK
+Create a high-level **SEO Content Brief and Outline**. Do NOT write the article yet. Focus on structure and strategy.
+
+# INPUT DATA
+<topic>
+{topic}
+</topic>
+
+<suggested_title>
+{title}
+</suggested_title>
+
+# REQUIREMENTS
+1. **Search Intent Analysis**: Define if the user wants to Buy, Know, or Go.
+2. **Semantic Entities**: List 5-10 LSI keywords and entities related to the topic (not just synonyms, but contextual concepts).
+3. **SERP Feature Targeting**: Identify one section designed to capture a "Featured Snippet" (e.g., a direct definition or list).
+4. **Structural Hierarchy**:
+   - Create a deep structure using H2 and H3 tags.
+   - Under each heading, provide 3 bullet points on EXACTLY what to discuss.
+   - Include specific examples or analogies to be used.
+
+# OUTPUT FORMAT
+Return the plan in Markdown. Ensure the H1 matches the suggested title.
+            
+            '''
+
+
             plan = generate_completion(prompt_phase_1, max_tokens=800)
             if not plan:
                 yield json.dumps({"error": "Error en Fase 1: No se pudo generar el plan"}) + "\n"
@@ -481,8 +521,34 @@ Aplica densidad de palabra clave moderada.
 No repitas ideas con sinónimos.
 Aquí tienes el esquema:
 {plan}
-
 Escribe el artículo completo en formato HTML (usa etiquetas h1, h2, p, ul, li, etc. pero sin html/body tags)."""
+
+            ''' Pra produccion: Instrucciones tecnicas precisas para evitar el "bloque de texto". Se enfatiza la legibilidad visual.
+# TASK
+Write the full comprehensive article based STRICTLY on the provided outline.
+
+# INPUT CONTEXT
+<outline>
+{plan}
+</outline>
+
+# WRITING GUIDELINES
+- **Voice & Tone**: Professional yet conversational. Avoid passive voice. Use rhetorical questions to engage.
+- **Visual Rhythm**:
+  - Max 3 lines per paragraph.
+  - Use `<strong>` tags to highlight key insights (scannability).
+  - Use `<ul>` or `<ol>` lists every 300 words approximately.
+- **Semantic SEO**: Naturally weave in the entities defined in the outline.
+
+# TECHNICAL CONSTRAINTS
+- Output format: **HTML Body only**.
+- Use tags: `<h1>`, `<h2>`, `<h3>`, `<p>`, `<ul>`, `<li>`, `<strong>`, `<blockquote>`.
+- **FORBIDDEN**: Do NOT use `<html>`, `<head>`, or `<body>` tags. Do NOT use Markdown formatting for the content, use real HTML tags.
+- **Language**: Spanish.
+
+# EXECUTE
+Write the high-quality draft now.
+            '''
 
             # Stream Phase 2 content
             stream = generate_completion(prompt_phase_2, max_tokens=1200, stream=True)
@@ -529,6 +595,28 @@ Sugiere correcciones concretas sin reescribir todo el texto.
 Aquí está el artículo:
 {truncated_draft}"""
 
+            ''' Para produccion: Aqui cambiamos la "temperatura" del prompt. Le pedimos que sea crítico, no amable. Usamos listas para estructurar la crítica.
+# ROLE
+Act as a Ruthless Editor-in-Chief. Your job is to destroy low-quality content and elevate it to premium standards.
+
+# TASK
+Audit the following draft for weaknesses.
+
+<draft>
+{truncated_draft}
+</draft>
+
+# AUDIT CRITERIA
+Analyze the text based on these 4 pillars:
+1. **FLUFF REMOVAL**: Identify sentences that add zero value or are repetitive.
+2. **AUTHORITY CHECK**: Flag vague claims (e.g., "many people say") that need data or specific examples.
+3. **FLOW & ENGAGEMENT**: Point out robotic transitions or boring introductions.
+4. **HTML INTEGRITY**: Check if the HTML structure is logical (hierarchy).
+
+# OUTPUT
+Provide a bulleted list of SPECIFIC instructions on how to fix these issues. Do not rewrite the text yet. Be direct and critical.
+            '''
+
             critique = generate_completion(prompt_phase_3, max_tokens=800)
             if not critique:
                 print("Fallo en Fase 3: Crítica vacía") # Debug log
@@ -549,6 +637,7 @@ Aquí está el artículo:
             prompt_phase_4 = f"""Teniendo en cuenta el siguiente artículo y la revisión crítica, genera la versión final y pulida del artículo.
 Aplica las correcciones sugeridas.
 Devuelve SOLO el código HTML del artículo final (sin markdown ```html, solo el contenido).
+No incluyas imágenes.
 
 Artículo original:
 {truncated_draft}
@@ -556,7 +645,32 @@ Artículo original:
 Revisión:
 {critique}"""
 
-            # Stream Phase 4 content
+            ''' Para produccion: El objetivo aqui es la limpieza tecnica absoluta. Instruimos al modelo para que devuelva "Raw String" para que tu software no se rompa con bloques de código markdown.
+# TASK
+Synthesize the final, polished version of the article by applying the Editor's critique to the Original Draft.
+
+# INPUTS
+<original_draft>
+{truncated_draft}
+</original_draft>
+
+<critique_notes>
+{critique}
+</critique_notes>
+
+# FINAL POLISHING RULES
+1. **Apply Changes**: Rewrite weak sections based on the critique.
+2. **Refine HTML**: Ensure all tags are properly closed and nested.
+3. **Check Tone**: Ensure the final Spanish sounds native and fluent, not translated.
+4. **Final Check**: Remove any concluding remarks like "In conclusion" if they feel generic.
+
+# OUTPUT FORMAT
+- Return **ONLY the raw HTML string**.
+- **CRITICAL**: Do NOT enclose the output in markdown code blocks (like ```html ... ```).
+- Start directly with the `<h1>` tag and end with the final tag.
+            '''
+
+
             # Stream Phase 4 content
             stream_final = generate_completion(prompt_phase_4, max_tokens=1500, stream=True)
             if not stream_final:
