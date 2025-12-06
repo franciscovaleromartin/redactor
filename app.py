@@ -1,6 +1,8 @@
 import os
 import gc
 import json
+import threading
+import time
 from flask import Flask, request, jsonify, render_template, stream_with_context, Response, session, redirect, url_for
 import google.generativeai as genai
 from google.oauth2.credentials import Credentials
@@ -44,7 +46,7 @@ AVAILABLE_MODELS = [
     "models/gemini-2.0-flash-exp",  # Experimental
     "models/gemini-2.5-flash",      # Latest
     "models/gemini-2.0-pro-exp",    # Pro Experimental
-''' "models/gemini-3.0-pro",        # 3.0 Pro Para produccion '''
+    ''' "models/gemini-3.0-pro",        # 3.0 Pro Para produccion '''
 ]
 
 def get_working_model():
@@ -193,18 +195,25 @@ def credentials_to_dict(credentials):
         'scopes': credentials.scopes
     }
 
-def get_drive_service():
-    """Get authenticated Google Drive service using OAuth 2.0 from session."""
-    if 'credentials' not in session:
-        raise Exception("Not authenticated. Please authorize first by visiting /authorize")
+def get_drive_service(creds_dict=None):
+    """Get authenticated Google Drive service using OAuth 2.0.
     
-    # Load credentials from session
-    creds = Credentials(**session['credentials'])
+    Args:
+        creds_dict (dict, optional): Credentials dictionary. If None, tries to get from session.
+    """
+    if creds_dict is None:
+        if 'credentials' not in session:
+            raise Exception("Not authenticated. Please authorize first by visiting /authorize")
+        creds_dict = session['credentials']
+    
+    # Load credentials
+    creds = Credentials(**creds_dict)
     
     # Refresh if expired
     if creds.expired and creds.refresh_token:
         creds.refresh(Request())
-        session['credentials'] = credentials_to_dict(creds)
+        if 'credentials' in session: # Only update session if we are in a request context with session
+             session['credentials'] = credentials_to_dict(creds)
     
     service = build('drive', 'v3', credentials=creds)
     return service
@@ -212,7 +221,6 @@ def get_drive_service():
 def find_or_create_folder(service, folder_name='redactor'):
     """Find or create a folder in Google Drive by name."""
     # Search for folder by name (case-insensitive-ish: check for 'redactor' and 'Redactor')
-    # Removed 'root' in parents to search the entire drive, not just root
     query = f"(name='{folder_name}' or name='{folder_name.capitalize()}') and mimeType='application/vnd.google-apps.folder' and trashed=false"
     results = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
     folders = results.get('files', [])
@@ -230,6 +238,244 @@ def find_or_create_folder(service, folder_name='redactor'):
         }
         folder = service.files().create(body=file_metadata, fields='id').execute()
         return folder.get('id')
+
+def save_article_to_drive(title, content, service=None, folder_name='redactor'):
+    """
+    Saves an article content to Google Drive.
+    
+    Args:
+        title (str): Title of the article
+        content (str): HTML content of the article
+        service: Google Drive service instance (optional, creates one if None)
+        folder_name (str): Target folder name
+        
+    Returns:
+        dict: File metadata (id, link)
+    """
+    if not service:
+        service = get_drive_service()
+        
+    # Find or create folder
+    folder_id = find_or_create_folder(service, folder_name)
+    
+    # Create file metadata
+    file_metadata = {
+        'name': title,
+        'mimeType': 'application/vnd.google-apps.document',  # Convert to Google Doc
+        'parents': [folder_id]
+    }
+    
+    # Create media
+    full_html = f"<html><body>{content}</body></html>"
+    media = MediaIoBaseUpload(io.BytesIO(full_html.encode('utf-8')),
+                                mimetype='text/html',
+                                resumable=True)
+    
+    # Upload file
+    file = service.files().create(body=file_metadata,
+                                    media_body=media,
+                                    fields='id, webViewLink').execute()
+    return file
+
+def generate_article_logic(topic, title, yield_json=True):
+    """
+    Core generation logic.
+    
+    Args:
+        topic (str): Topic to write about.
+        title (str): Suggested title.
+        yield_json (bool): If True, yields JSON strings for SSE. If False, yields plain updates and finally the HTML.
+        
+    Yields:
+        str: JSON strings or internal status/content.
+    """
+    try:
+        # Phase 1: Planificación
+        if yield_json: yield json.dumps({"status": "phase_1", "message": "Generando esquema SEO..."}) + "\n"
+        
+        prompt_phase_1 = f"""Genera un esquema detallado para un artículo optimizado para SEO sobre: {topic}.
+Título sugerido: {title}
+Incluye:
+– Intención de búsqueda.
+– Palabras clave principales y secundarias.
+– Estructura H1/H2/H3 muy específica.
+– Puntos clave que deben cubrirse en cada sección.
+– Ejemplos concretos para mejorar calidad.
+No escribas el contenido. Solo el plan."""
+
+        plan = generate_completion(prompt_phase_1, max_tokens=800)
+        if not plan:
+            if yield_json: yield json.dumps({"error": "Error en Fase 1: No se pudo generar el plan"}) + "\n"
+            return
+            
+        if yield_json: yield json.dumps({"status": "phase_1_done", "data": plan}) + "\n"
+        del prompt_phase_1
+        gc.collect()
+
+        # Phase 2: Redacción
+        if yield_json: yield json.dumps({"status": "phase_2", "message": "Redactando borrador..."}) + "\n"
+        
+        prompt_phase_2 = f"""Usa exclusivamente el siguiente esquema para redactar el artículo.
+No añadas nuevas secciones.
+Mantén claridad, precisión y evita relleno.
+Incluye datos verificables o neutrales cuando proceda.
+Aplica densidad de palabra clave moderada.
+No repitas ideas con sinónimos.
+Aquí tienes el esquema:
+{plan}
+Escribe el artículo completo en formato HTML (usa etiquetas h1, h2, p, ul, li, etc. pero sin html/body tags)."""
+
+        # Stream Phase 2 content
+        stream = generate_completion(prompt_phase_2, max_tokens=1200, stream=True)
+        if not stream:
+            if yield_json: yield json.dumps({"error": "Error en Fase 2: No se pudo iniciar la redacción"}) + "\n"
+            return
+
+        draft = ""
+        for chunk in stream:
+            if hasattr(chunk, 'text') and chunk.text:
+                content_chunk = chunk.text
+                draft += content_chunk
+                if yield_json: yield json.dumps({"status": "phase_2_stream", "chunk": content_chunk}) + "\n"
+        
+        if not draft:
+            if yield_json: yield json.dumps({"error": "Error en Fase 2: Borrador vacío"}) + "\n"
+            return
+
+        if yield_json: yield json.dumps({"status": "phase_2_done", "data": "Borrador completado"}) + "\n"
+        del prompt_phase_2
+        gc.collect()
+
+        # Phase 3: Revisión
+        if yield_json: yield json.dumps({"status": "phase_3", "message": "Revisando contenido..."}) + "\n"
+        
+        # Truncate to avoid excessive tokens
+        truncated_draft = draft[:12000] 
+        
+        prompt_phase_3 = f"""Evalúa este artículo.
+Identifica:
+– frases redundantes
+– afirmaciones débiles
+– repeticiones innecesarias
+– oportunidades de mayor claridad
+– sobreoptimización SEO
+Sugiere correcciones concretas sin reescribir todo el texto.
+Aquí está el artículo:
+{truncated_draft}"""
+
+        critique = generate_completion(prompt_phase_3, max_tokens=800)
+        if not critique:
+            if yield_json: yield json.dumps({"error": "Error en Fase 3: No se pudo generar la crítica"}) + "\n"
+            return
+
+        if yield_json: yield json.dumps({"status": "phase_3_done", "data": critique}) + "\n"
+        del prompt_phase_3
+        gc.collect()
+
+        # Phase 4: Finalización
+        if yield_json: yield json.dumps({"status": "phase_4", "message": "Aplicando mejoras finales..."}) + "\n"
+        
+        prompt_phase_4 = f"""Teniendo en cuenta el siguiente artículo y la revisión crítica, genera la versión final y pulida del artículo.
+Aplica las correcciones sugeridas.
+Devuelve SOLO el código HTML del artículo final (sin markdown ```html, solo el contenido).
+No incluyas imágenes.
+
+Artículo original:
+{truncated_draft}
+
+Revisión:
+{critique}"""
+
+        # Stream Phase 4 content
+        stream_final = generate_completion(prompt_phase_4, max_tokens=1500, stream=True)
+        if not stream_final:
+            if yield_json: yield json.dumps({"error": "Error en Fase 4: No se pudo iniciar la versión final"}) + "\n"
+            return
+
+        final_article = ""
+        for chunk in stream_final:
+            if hasattr(chunk, 'text') and chunk.text:
+                content_chunk = chunk.text
+                final_article += content_chunk
+                if yield_json: yield json.dumps({"status": "phase_4_stream", "chunk": content_chunk}) + "\n"
+
+        if not final_article:
+             if yield_json: yield json.dumps({"error": "Error en Fase 4: El artículo final se generó vacío."}) + "\n"
+             return
+
+        # Cleanup
+        final_article = final_article.replace("```html", "").replace("```", "")
+        del prompt_phase_4, critique, draft, plan, truncated_draft
+        gc.collect()
+
+        if yield_json:
+            yield json.dumps({"status": "complete", "final_article": final_article}) + "\n"
+        else:
+            yield final_article
+
+    except Exception as e:
+        print(f"Generate Exception: {e}")
+        error_msg = f"Error inesperado: {str(e)}"
+        if yield_json:
+            yield json.dumps({"error": error_msg}) + "\n"
+        else:
+            raise e
+
+def process_batch(rows, credentials_dict):
+    """
+    Process a batch of articles in the background.
+    Iterates through rows, generates content, and uploads to Drive.
+    """
+    print(f"Starting batch processing of {len(rows)} items...")
+
+    # Authenticate service once if possible, or per request if needed.
+    # Since this runs in a thread, we can't access 'session' directly easily if it expires.
+    # We pass the credentials dictionary explicitly.
+    try:
+        service = get_drive_service(creds_dict=credentials_dict)
+    except Exception as e:
+        print(f"Batch Error: Could not authenticate Drive: {e}")
+        return
+
+    for i, row in enumerate(rows):
+        topic = row.get('palabra_clave')
+        suggested_title = row.get('titulo_sugerido', '')
+        
+        if not topic:
+            continue
+            
+        print(f"[{i+1}/{len(rows)}] Processing: {topic}")
+        
+        try:
+            # Generate Article
+            # Iterate through the generator until the end to get the final result
+            final_content = None
+            generator = generate_article_logic(topic, suggested_title, yield_json=False)
+            
+            for result in generator:
+                # The last yielded value from generate_article_logic(yield_json=False) is the final HTML
+                final_content = result
+            
+            if final_content:
+                # Use suggested title or topic if not provided
+                doc_title = suggested_title if suggested_title else f"Articulo: {topic}"
+                
+                # Upload to Drive
+                print(f"Uploading '{doc_title}' to Drive...")
+                save_article_to_drive(doc_title, final_content, service=service)
+                print(f"✓ Uploaded: {doc_title}")
+            else:
+                print(f"✗ Failed to generate content for {topic}")
+                
+        except Exception as e:
+            print(f"✗ Error processing {topic}: {e}")
+            
+        # Heavy cleanup after each item
+        gc.collect()
+        # Small pause to be nice to APIs
+        time.sleep(2)
+        
+    print("Batch processing complete.")
 
 @app.route('/authorize')
 def authorize():
@@ -354,7 +600,29 @@ def index():
         if request.is_json:
             try:
                 data = request.json
-                # Extract and map fields (Sheets sends 'palabra_clave' and 'titulo_sugerido')
+                
+                # CHECK FOR BATCH INPUT ("filas")
+                if 'filas' in data and isinstance(data['filas'], list):
+                    rows = data['filas']
+                    
+                    # Check authentication for Drive
+                    if 'credentials' not in session:
+                         return jsonify({"status": "error", "message": "No estás autenticado en Google Drive. Por favor visita la web y conecta Drive primero."}), 401
+                    
+                    creds_dict = session['credentials']
+                    
+                    # Start background thread
+                    thread = threading.Thread(target=process_batch, args=(rows, creds_dict))
+                    thread.daemon = True # Daemon thread so it doesn't block app shutdown
+                    thread.start()
+                    
+                    return jsonify({
+                        "status": "batch_processing_started",
+                        "message": f"Se ha iniciado el procesamiento de {len(rows)} artículos en segundo plano."
+                    })
+
+                # Handle single item inputs (Sheets single row or direct JSON)
+                # Sheets sends 'palabra_clave' and 'titulo_sugerido'
                 draft_data = {
                     'topic': data.get('palabra_clave', ''),
                     'title': data.get('titulo_sugerido', '')
@@ -391,30 +659,10 @@ def upload_to_drive():
         if not content:
             return jsonify({"error": "No content provided"}), 400
 
-        # Get authenticated Drive service with OAuth 2.0
+        # Use helper function
+        # Get authenticated Drive service with current session
         service = get_drive_service()
-        
-        # Find or create 'redactor' folder
-        folder_id = find_or_create_folder(service, 'redactor')
-        
-        # Create file metadata
-        file_metadata = {
-            'name': title,
-            'mimeType': 'application/vnd.google-apps.document',  # Convert to Google Doc
-            'parents': [folder_id]  # Always save to 'redactor' folder
-        }
-        
-        # Create media
-        # Wrap the HTML content in a basic HTML structure for Drive to convert it properly
-        full_html = f"<html><body>{content}</body></html>"
-        media = MediaIoBaseUpload(io.BytesIO(full_html.encode('utf-8')),
-                                  mimetype='text/html',
-                                  resumable=True)
-        
-        # Upload file
-        file = service.files().create(body=file_metadata,
-                                      media_body=media,
-                                      fields='id, webViewLink').execute()
+        file = save_article_to_drive(title, content, service=service)
                                       
         return jsonify({
             "success": True, 
@@ -435,14 +683,12 @@ def debug_drive():
         # Check Quota and User Info
         about = service.about().get(fields="storageQuota,user").execute()
         
-        # Check if token file exists
-        token_status = "Token exists" if os.path.exists(TOKEN_FILE) else "No token found"
+        # Check if token file exists (Variable TOKEN_FILE seems unused previously but we check OAUTH_CREDENTIALS_FILE)
         oauth_creds_status = "OAuth credentials exist" if os.path.exists(OAUTH_CREDENTIALS_FILE) else "OAuth credentials not found"
 
         return jsonify({
             "user": about.get('user'),
             "quota": about.get('storageQuota'),
-            "token_status": token_status,
             "oauth_credentials_status": oauth_creds_status
         })
     except Exception as e:
@@ -459,246 +705,9 @@ def generate_article():
         return jsonify({"error": "Se requiere un tema (topic)."}), 400
 
     def generate_stream():
-        try:
-            # Phase 1: Planificación
-            yield json.dumps({"status": "phase_1", "message": "Generando esquema SEO..."}) + "\n"
-            
-            prompt_phase_1 = f"""Genera un esquema detallado para un artículo optimizado para SEO sobre: {topic}.
-Título sugerido: {title}
-Incluye:
-– Intención de búsqueda.
-– Palabras clave principales y secundarias.
-– Estructura H1/H2/H3 muy específica.
-– Puntos clave que deben cubrirse en cada sección.
-– Ejemplos concretos para mejorar calidad.
-No escribas el contenido. Solo el plan."""
-
-            ''' Para produccion: Aquí usamos etiquetas como <topic> para encapsular las variables. Esto reduce alucinaciones.
-# TASK
-Create a high-level **SEO Content Brief and Outline**. Do NOT write the article yet. Focus on structure and strategy.
-
-# INPUT DATA
-<topic>
-{topic}
-</topic>
-
-<suggested_title>
-{title}
-</suggested_title>
-
-# REQUIREMENTS
-1. **Search Intent Analysis**: Define if the user wants to Buy, Know, or Go.
-2. **Semantic Entities**: List 5-10 LSI keywords and entities related to the topic (not just synonyms, but contextual concepts).
-3. **SERP Feature Targeting**: Identify one section designed to capture a "Featured Snippet" (e.g., a direct definition or list).
-4. **Structural Hierarchy**:
-   - Create a deep structure using H2 and H3 tags.
-   - Under each heading, provide 3 bullet points on EXACTLY what to discuss.
-   - Include specific examples or analogies to be used.
-
-# OUTPUT FORMAT
-Return the plan in Markdown. Ensure the H1 matches the suggested title.
-            
-            '''
-
-
-            plan = generate_completion(prompt_phase_1, max_tokens=800)
-            if not plan:
-                yield json.dumps({"error": "Error en Fase 1: No se pudo generar el plan"}) + "\n"
-                return
-                
-            yield json.dumps({"status": "phase_1_done", "data": plan}) + "\n"
-            del prompt_phase_1
-            gc.collect()
-
-            # Phase 2: Redacción
-            yield json.dumps({"status": "phase_2", "message": "Redactando borrador..."}) + "\n"
-            
-            prompt_phase_2 = f"""Usa exclusivamente el siguiente esquema para redactar el artículo.
-No añadas nuevas secciones.
-Mantén claridad, precisión y evita relleno.
-Incluye datos verificables o neutrales cuando proceda.
-Aplica densidad de palabra clave moderada.
-No repitas ideas con sinónimos.
-Aquí tienes el esquema:
-{plan}
-Escribe el artículo completo en formato HTML (usa etiquetas h1, h2, p, ul, li, etc. pero sin html/body tags)."""
-
-            ''' Pra produccion: Instrucciones tecnicas precisas para evitar el "bloque de texto". Se enfatiza la legibilidad visual.
-# TASK
-Write the full comprehensive article based STRICTLY on the provided outline.
-
-# INPUT CONTEXT
-<outline>
-{plan}
-</outline>
-
-# WRITING GUIDELINES
-- **Voice & Tone**: Professional yet conversational. Avoid passive voice. Use rhetorical questions to engage.
-- **Visual Rhythm**:
-  - Max 3 lines per paragraph.
-  - Use `<strong>` tags to highlight key insights (scannability).
-  - Use `<ul>` or `<ol>` lists every 300 words approximately.
-- **Semantic SEO**: Naturally weave in the entities defined in the outline.
-
-# TECHNICAL CONSTRAINTS
-- Output format: **HTML Body only**.
-- Use tags: `<h1>`, `<h2>`, `<h3>`, `<p>`, `<ul>`, `<li>`, `<strong>`, `<blockquote>`.
-- **FORBIDDEN**: Do NOT use `<html>`, `<head>`, or `<body>` tags. Do NOT use Markdown formatting for the content, use real HTML tags.
-- **Language**: Spanish.
-
-# EXECUTE
-Write the high-quality draft now.
-            '''
-
-            # Stream Phase 2 content
-            stream = generate_completion(prompt_phase_2, max_tokens=1200, stream=True)
-            if not stream:
-                yield json.dumps({"error": "Error en Fase 2: No se pudo iniciar la redacción"}) + "\n"
-                return
-
-            draft = ""
-            for chunk in stream:
-                # Check if chunk has valid content
-                if hasattr(chunk, 'text') and chunk.text:
-                    content_chunk = chunk.text
-                    draft += content_chunk
-                    yield json.dumps({"status": "phase_2_stream", "chunk": content_chunk}) + "\n"
-            
-            if not draft:
-                yield json.dumps({"error": "Error en Fase 2: Borrador vacío"}) + "\n"
-                return
-
-            yield json.dumps({"status": "phase_2_done", "data": "Borrador completado"}) + "\n"
-            del prompt_phase_2
-            
-            # Keep-alive during GC
-            yield json.dumps({"status": "keep_alive", "message": "Procesando..."}) + "\n"
-            gc.collect()
-
-            # Phase 3: Revisión
-            yield json.dumps({"status": "phase_3", "message": "Revisando contenido..."}) + "\n"
-            print("Iniciando Fase 3...") # Debug log
-            
-            # Truncate draft to avoid token limits (approx 12000 chars ~ 3000 tokens)
-            truncated_draft = draft[:12000] 
-            if len(draft) > 12000:
-                print("Aviso: Borrador truncado para Fase 3")
-            
-            prompt_phase_3 = f"""Evalúa este artículo.
-Identifica:
-– frases redundantes
-– afirmaciones débiles
-– repeticiones innecesarias
-– oportunidades de mayor claridad
-– sobreoptimización SEO
-Sugiere correcciones concretas sin reescribir todo el texto.
-Aquí está el artículo:
-{truncated_draft}"""
-
-            ''' Para produccion: Aqui cambiamos la "temperatura" del prompt. Le pedimos que sea crítico, no amable. Usamos listas para estructurar la crítica.
-# ROLE
-Act as a Ruthless Editor-in-Chief. Your job is to destroy low-quality content and elevate it to premium standards.
-
-# TASK
-Audit the following draft for weaknesses.
-
-<draft>
-{truncated_draft}
-</draft>
-
-# AUDIT CRITERIA
-Analyze the text based on these 4 pillars:
-1. **FLUFF REMOVAL**: Identify sentences that add zero value or are repetitive.
-2. **AUTHORITY CHECK**: Flag vague claims (e.g., "many people say") that need data or specific examples.
-3. **FLOW & ENGAGEMENT**: Point out robotic transitions or boring introductions.
-4. **HTML INTEGRITY**: Check if the HTML structure is logical (hierarchy).
-
-# OUTPUT
-Provide a bulleted list of SPECIFIC instructions on how to fix these issues. Do not rewrite the text yet. Be direct and critical.
-            '''
-
-            critique = generate_completion(prompt_phase_3, max_tokens=800)
-            if not critique:
-                print("Fallo en Fase 3: Crítica vacía") # Debug log
-                yield json.dumps({"error": "Error en Fase 3: No se pudo generar la crítica"}) + "\n"
-                return
-
-            yield json.dumps({"status": "phase_3_done", "data": critique}) + "\n"
-            del prompt_phase_3
-            
-            # Keep-alive during GC
-            yield json.dumps({"status": "keep_alive", "message": "Procesando..."}) + "\n"
-            gc.collect()
-
-            # Phase 4: Finalización
-            yield json.dumps({"status": "phase_4", "message": "Aplicando mejoras finales..."}) + "\n"
-            print("Iniciando Fase 4...") # Debug log
-            
-            prompt_phase_4 = f"""Teniendo en cuenta el siguiente artículo y la revisión crítica, genera la versión final y pulida del artículo.
-Aplica las correcciones sugeridas.
-Devuelve SOLO el código HTML del artículo final (sin markdown ```html, solo el contenido).
-No incluyas imágenes.
-
-Artículo original:
-{truncated_draft}
-
-Revisión:
-{critique}"""
-
-            ''' Para produccion: El objetivo aqui es la limpieza tecnica absoluta. Instruimos al modelo para que devuelva "Raw String" para que tu software no se rompa con bloques de código markdown.
-# TASK
-Synthesize the final, polished version of the article by applying the Editor's critique to the Original Draft.
-
-# INPUTS
-<original_draft>
-{truncated_draft}
-</original_draft>
-
-<critique_notes>
-{critique}
-</critique_notes>
-
-# FINAL POLISHING RULES
-1. **Apply Changes**: Rewrite weak sections based on the critique.
-2. **Refine HTML**: Ensure all tags are properly closed and nested.
-3. **Check Tone**: Ensure the final Spanish sounds native and fluent, not translated.
-4. **Final Check**: Remove any concluding remarks like "In conclusion" if they feel generic.
-
-# OUTPUT FORMAT
-- Return **ONLY the raw HTML string**.
-- **CRITICAL**: Do NOT enclose the output in markdown code blocks (like ```html ... ```).
-- Start directly with the `<h1>` tag and end with the final tag.
-            '''
-
-
-            # Stream Phase 4 content
-            stream_final = generate_completion(prompt_phase_4, max_tokens=1500, stream=True)
-            if not stream_final:
-                yield json.dumps({"error": "Error en Fase 4: No se pudo iniciar la versión final"}) + "\n"
-                return
-
-            final_article = ""
-            for chunk in stream_final:
-                # Check if chunk has valid content
-                if hasattr(chunk, 'text') and chunk.text:
-                    content_chunk = chunk.text
-                    final_article += content_chunk
-                    yield json.dumps({"status": "phase_4_stream", "chunk": content_chunk}) + "\n"
-
-            if not final_article:
-                 yield json.dumps({"error": "Error en Fase 4: El artículo final se generó vacío."}) + "\n"
-                 return
-
-            # Cleanup
-            final_article = final_article.replace("```html", "").replace("```", "")
-            del prompt_phase_4, critique, draft, plan, truncated_draft
-            gc.collect()
-
-            yield json.dumps({"status": "complete", "final_article": final_article}) + "\n"
-            
-        except Exception as e:
-            print(f"Excepción general en generate_stream: {e}")
-            yield json.dumps({"error": f"Error inesperado: {str(e)}"}) + "\n"
+         # Re-use logic in JSON yielding mode
+         for msg in generate_article_logic(topic, title, yield_json=True):
+             yield msg
 
     return Response(stream_with_context(generate_stream()), mimetype='application/json')
 
