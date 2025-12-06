@@ -173,6 +173,7 @@ You are an Elite SEO Content Strategist and Senior Copywriter specialized in the
 # OAuth 2.0 Configuration
 SCOPES = ['https://www.googleapis.com/auth/drive']
 OAUTH_CREDENTIALS_FILE = 'oauth_credentials.json'
+TOKEN_FILE = 'token.json'  # File to store user credentials
 
 def get_oauth_config():
     """Load OAuth configuration from file or environment variable."""
@@ -199,21 +200,48 @@ def get_drive_service(creds_dict=None):
     """Get authenticated Google Drive service using OAuth 2.0.
     
     Args:
-        creds_dict (dict, optional): Credentials dictionary. If None, tries to get from session.
+        creds_dict (dict, optional): Credentials dictionary. If None, tries to get from session or file.
     """
     if creds_dict is None:
-        if 'credentials' not in session:
+        if 'credentials' in session:
+            creds_dict = session['credentials']
+        elif os.path.exists(TOKEN_FILE):
+            # Fallback to local token file
+            try:
+                with open(TOKEN_FILE, 'r') as f:
+                    creds_dict = json.load(f)
+            except Exception as e:
+                print(f"Error reading token file: {e}")
+                
+        if not creds_dict:
             raise Exception("Not authenticated. Please authorize first by visiting /authorize")
-        creds_dict = session['credentials']
     
     # Load credentials
     creds = Credentials(**creds_dict)
     
     # Refresh if expired
     if creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        if 'credentials' in session: # Only update session if we are in a request context with session
-             session['credentials'] = credentials_to_dict(creds)
+        try:
+            creds.refresh(Request())
+            # Update storage with refreshed token
+            new_creds_dict = credentials_to_dict(creds)
+            
+            # Update session if available
+            if request and hasattr(session, 'update'): 
+                # Check if we are in a request context
+                try:
+                    session['credentials'] = new_creds_dict
+                except RuntimeError:
+                    pass # Not in request context
+
+            # Update file
+            with open(TOKEN_FILE, 'w') as f:
+                json.dump(new_creds_dict, f)
+                
+            creds_dict = new_creds_dict
+        except Exception as e:
+            print(f"Error refreshing token: {e}")
+            raise Exception("Authentication expired. Please re-login.")
     
     service = build('drive', 'v3', credentials=creds)
     return service
@@ -421,7 +449,7 @@ Revisión:
         else:
             raise e
 
-def process_batch(rows, credentials_dict):
+def process_batch(rows, credentials_dict=None):
     """
     Process a batch of articles in the background.
     Iterates through rows, generates content, and uploads to Drive.
@@ -430,12 +458,21 @@ def process_batch(rows, credentials_dict):
 
     # Authenticate service once if possible, or per request if needed.
     # Since this runs in a thread, we can't access 'session' directly easily if it expires.
-    # We pass the credentials dictionary explicitly.
+    # We pass the credentials dictionary explicitly, or let get_drive_service load from file.
     try:
         service = get_drive_service(creds_dict=credentials_dict)
     except Exception as e:
-        print(f"Batch Error: Could not authenticate Drive: {e}")
-        return
+        print(f"Batch Error: Could not authenticate Drive: {str(e)}")
+        # Try one more time forcing file load if creds_dict was None
+        if not credentials_dict:
+             try:
+                 print("Attempting to load credentials from file for batch...")
+                 service = get_drive_service() # Will try file
+             except Exception as e2:
+                 print(f"Batch Error (Fallback): {str(e2)}")
+                 return
+        else:
+             return
 
     for i, row in enumerate(rows):
         topic = row.get('palabra_clave')
@@ -541,9 +578,14 @@ def oauth2callback():
         # Exchange authorization code for tokens
         flow.fetch_token(authorization_response=request.url)
         
-        # Store credentials in session
+        # Store credentials in session AND file
         credentials = flow.credentials
-        session['credentials'] = credentials_to_dict(credentials)
+        creds_dict = credentials_to_dict(credentials)
+        session['credentials'] = creds_dict
+        
+        # Persist to file
+        with open(TOKEN_FILE, 'w') as f:
+            json.dump(creds_dict, f)
         
         # Redirect back to home page
         return redirect('/')
@@ -555,20 +597,35 @@ def oauth2callback():
 def auth_status():
     """Check if user is authenticated with Google Drive."""
     try:
-        if 'credentials' not in session:
-            return jsonify({"authenticated": False})
+        # Check session or file
+        if 'credentials' in session:
+            creds_dict = session['credentials']
+        elif os.path.exists(TOKEN_FILE):
+             with open(TOKEN_FILE, 'r') as f:
+                creds_dict = json.load(f)
+        else:
+             return jsonify({"authenticated": False})
         
         # Check if credentials are valid
-        creds = Credentials(**session['credentials'])
+        creds = Credentials(**creds_dict)
         
         # Try to refresh if expired
         if creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
-                session['credentials'] = credentials_to_dict(creds)
+                new_creds_dict = credentials_to_dict(creds)
+                
+                # Update session
+                if 'credentials' in session:
+                     session['credentials'] = new_creds_dict
+                
+                # Update file
+                with open(TOKEN_FILE, 'w') as f:
+                    json.dump(new_creds_dict, f)
             except:
                 # Refresh failed, need to re-authorize
-                session.pop('credentials', None)
+                if 'credentials' in session: session.pop('credentials', None)
+                if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
                 return jsonify({"authenticated": False})
         
         return jsonify({"authenticated": True})
@@ -582,9 +639,11 @@ def disconnect_drive():
     try:
         if 'credentials' in session:
             session.pop('credentials', None)
-            return jsonify({"success": True, "message": "Disconnected from Google Drive"})
-        else:
-            return jsonify({"success": False, "message": "Not connected"}), 400
+        
+        if os.path.exists(TOKEN_FILE):
+            os.remove(TOKEN_FILE)
+            
+        return jsonify({"success": True, "message": "Disconnected from Google Drive"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -605,11 +664,17 @@ def index():
                 if 'filas' in data and isinstance(data['filas'], list):
                     rows = data['filas']
                     
-                    # Check authentication for Drive
-                    if 'credentials' not in session:
-                         return jsonify({"status": "error", "message": "No estás autenticado en Google Drive. Por favor visita la web y conecta Drive primero."}), 401
+                    # Try to get credentials from session or file
+                    creds_dict = session.get('credentials')
+                    if not creds_dict and os.path.exists(TOKEN_FILE):
+                        try:
+                            with open(TOKEN_FILE, 'r') as f:
+                                creds_dict = json.load(f)
+                        except:
+                            pass
                     
-                    creds_dict = session['credentials']
+                    if not creds_dict:
+                         return jsonify({"status": "error", "message": "No estás autenticado en Google Drive. Por favor visita la web y conecta Drive primero."}), 401
                     
                     # Start background thread
                     thread = threading.Thread(target=process_batch, args=(rows, creds_dict))
