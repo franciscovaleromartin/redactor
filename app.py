@@ -663,46 +663,42 @@ def index():
                 # CHECK FOR BATCH INPUT ("filas")
                 if 'filas' in data and isinstance(data['filas'], list):
                     rows = data['filas']
-                    
-                    # Try to get credentials from session or file
-                    creds_dict = session.get('credentials')
-                    if not creds_dict and os.path.exists(TOKEN_FILE):
-                        try:
-                            with open(TOKEN_FILE, 'r') as f:
-                                creds_dict = json.load(f)
-                        except:
-                            pass
-                    
-                    if not creds_dict:
-                         return jsonify({"status": "error", "message": "No estás autenticado en Google Drive. Por favor visita la web y conecta Drive primero."}), 401
-                    
-                    # Start background thread
-                    thread = threading.Thread(target=process_batch, args=(rows, creds_dict))
-                    thread.daemon = True # Daemon thread so it doesn't block app shutdown
-                    thread.start()
-                    
-                    return jsonify({
-                        "status": "batch_processing_started",
-                        "message": f"Se ha iniciado el procesamiento de {len(rows)} artículos en segundo plano."
-                    })
-
                 # Handle single item inputs (Sheets single row or direct JSON)
                 # Sheets sends 'palabra_clave' and 'titulo_sugerido'
-                draft_data = {
-                    'topic': data.get('palabra_clave', ''),
-                    'title': data.get('titulo_sugerido', '')
-                }
+                elif 'palabra_clave' in data:
+                    rows = [{
+                        'palabra_clave': data.get('palabra_clave'),
+                        'titulo_sugerido': data.get('titulo_sugerido', '')
+                    }]
+                else: 
+                     return jsonify({"status": "error", "message": "JSON must contain 'filas' list or 'palabra_clave'"}), 400
+
+                # Process whatever rows we have (1 or many)
                 
-                # Save to file for persistence
-                with open(DRAFT_FILE, 'w') as f:
-                    json.dump(draft_data, f)
+                # Try to get credentials from session or file
+                creds_dict = session.get('credentials')
+                if not creds_dict and os.path.exists(TOKEN_FILE):
+                    try:
+                        with open(TOKEN_FILE, 'r') as f:
+                            creds_dict = json.load(f)
+                    except:
+                        pass
                 
-                return jsonify({"status": "received", "message": "Datos guardados correctamente"})
+                if not creds_dict:
+                        return jsonify({"status": "error", "message": "No estás autenticado en Google Drive. Por favor visita la web y conecta Drive primero."}), 401
+                
+                # Start background thread
+                thread = threading.Thread(target=process_batch, args=(rows, creds_dict))
+                thread.daemon = True # Daemon thread so it doesn't block app shutdown
+                thread.start()
+                
+                return jsonify({
+                    "status": "processing_started",
+                    "message": f"Se ha iniciado el procesamiento de {len(rows)} artículo(s) en segundo plano."
+                })
             except Exception as e:
                 return jsonify({"status": "error", "message": str(e)}), 500
         return jsonify({"status": "error", "message": "JSON required"}), 400
-            
-    # GET request: Load the latest draft if it exists
     if os.path.exists(DRAFT_FILE):
         try:
             with open(DRAFT_FILE, 'r') as f:
