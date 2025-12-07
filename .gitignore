@@ -39,4 +39,12 @@ oauth_credentials.json
 token.json
 service_account.json
 
+# Temporary files and documentation
 desplegar.rtf
+models.txt
+latest_draft.json
+*.docx
+generar_informe_sidn.py
+
+# Logs
+*.log
