@@ -673,7 +673,10 @@ def index():
                         except:
                             pass
                     
-                    # Start background thread (even if no creds, might find them later or fail silently)
+                    if not creds_dict:
+                         return jsonify({"status": "error", "message": "No estás autenticado en Google Drive. Por favor visita la web y conecta Drive primero."}), 401
+                    
+                    # Start background thread
                     thread = threading.Thread(target=process_batch, args=(rows, creds_dict))
                     thread.daemon = True # Daemon thread so it doesn't block app shutdown
                     thread.start()
@@ -684,39 +687,17 @@ def index():
                     })
 
                 # Handle single item inputs (Sheets single row or direct JSON)
-                if 'palabra_clave' in data:
-                     # Check authentication
-                    creds_dict = session.get('credentials')
-                    if not creds_dict and os.path.exists(TOKEN_FILE):
-                        try:
-                            with open(TOKEN_FILE, 'r') as f:
-                                creds_dict = json.load(f)
-                        except:
-                            pass
-                    
-                    # Create a list with the single item to reuse process_batch logic
-                    rows = [data]
-                    
-                    # Start background thread
-                    thread = threading.Thread(target=process_batch, args=(rows, creds_dict))
-                    thread.daemon = True
-                    thread.start()
-                    
-                    # Save local draft just in case
-                    draft_data = {
-                        'topic': data.get('palabra_clave', ''),
-                        'title': data.get('titulo_sugerido', '')
-                    }
-                    try:
-                        with open(DRAFT_FILE, 'w') as f:
-                            json.dump(draft_data, f)
-                    except:
-                        pass
-
-                    return jsonify({"status": "processing_started", "message": "Procesamiento de fila única iniciado."})
-
-                # Legacy fallback or unknown format
-                return jsonify({"status": "error", "message": "JSON required with 'filas' list or 'palabra_clave'"}), 400
+                # Sheets sends 'palabra_clave' and 'titulo_sugerido'
+                draft_data = {
+                    'topic': data.get('palabra_clave', ''),
+                    'title': data.get('titulo_sugerido', '')
+                }
+                
+                # Save to file for persistence
+                with open(DRAFT_FILE, 'w') as f:
+                    json.dump(draft_data, f)
+                
+                return jsonify({"status": "received", "message": "Datos guardados correctamente"})
             except Exception as e:
                 return jsonify({"status": "error", "message": str(e)}), 500
         return jsonify({"status": "error", "message": "JSON required"}), 400
