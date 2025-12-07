@@ -43,8 +43,10 @@ service_account.json
 desplegar.rtf
 models.txt
 latest_draft.json
-*.docx
 generar_informe_sidn.py
+
+# Allow specific DOCX files
+!Informe_SIDN_Redactor.docx
 
 # Logs
 *.log
