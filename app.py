@@ -70,17 +70,27 @@ def get_working_model():
             continue
     raise Exception("No working Gemini models found. Please check your API key or wait for rate limits to reset.")
 
-# Determine working model at startup
+# Determine working model at startup (MOVED TO LAZY LOAD)
 WORKING_MODEL = None
-if api_key:
-    try:
-        WORKING_MODEL = get_working_model()
-    except Exception as e:
-        print(f"ERROR: {e}")
+# We no longer check strictly at startup to avoid "Time Out" during Render deploy
+# if api_key:
+#     try:
+#         WORKING_MODEL = get_working_model()
+#     except Exception as e:
+#         print(f"ERROR: {e}")
 
 def generate_completion(prompt, model_name=None, max_tokens=None, stream=False):
     """Helper function to call Google Gemini API."""
+    global WORKING_MODEL
+    
     if model_name is None:
+        if not WORKING_MODEL:
+            try:
+                print("Lazy loading: Checking for working model...")
+                WORKING_MODEL = get_working_model()
+            except Exception as e:
+                print(f"Error initializing model: {e}")
+                
         model_name = WORKING_MODEL
     
     if not model_name:
