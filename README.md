@@ -1,60 +1,58 @@
 # Redactor SIDN
 
-Aplicación web para generar artículos optimizados para SEO usando un proceso de 4 fases con GPT.
+**Redactor SIDN** es una herramienta avanzada de automatización de contenidos que utiliza Inteligencia Artificial (Google Gemini) para generar artículos optimizados para SEO de alta calidad.
 
-## Despliegue en Render
+Diseñada para flujos de trabajo profesionales, permite generar contenido desde una interfaz web o directamente desde **Google Sheets**, guardando los resultados automáticamente en **Google Drive**.
 
-### Pasos para desplegar:
+## ¿Por qué Redactor SIDN?
 
-1. **Sube el código a GitHub:**
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git branch -M main
-   git remote add origin <tu-repositorio-url>
-   git push -u origin main
-   ```
+Generar contenido de calidad para SEO requiere tiempo y estructura. Esta herramienta automatiza el proceso emulando el flujo de trabajo de un redactor experto:
 
-2. **Configura en Render:**
-   - Ve a [Render Dashboard](https://dashboard.render.com/)
-   - Click en "New +" → "Web Service"
-   - Conecta tu repositorio de GitHub
-   - Render detectará automáticamente el `render.yaml`
-   
-3. **Configura la variable de entorno:**
-   - En el dashboard de Render, ve a "Environment"
-   - Añade la variable: `api_key` con tu API key de OpenAI
-   
-4. **Despliega:**
-   - Render desplegará automáticamente tu aplicación
-   - Recibirás una URL como: `https://redactor-sidn.onrender.com`
+1.  **Planificación**: Analiza la intención de búsqueda y crea un esquema (H1, H2, H3).
+2.  **Redacción**: Escribe el contenido completo siguiendo el esquema.
+3.  **Revisión**: Una "segunda opinión" de la IA critica el borrador buscando mejoras.
+4.  **Finalización**: Aplica las correcciones para entregar un texto pulido.
 
-## Variables de entorno necesarias
+Todo esto sucede en segundos, permitiéndote escalar tu estrategia de contenidos sin sacrificar calidad.
 
-- `api_key`: Tu API key de OpenAI
+## ¿Cómo funciona?
 
-## Desarrollo local
+### 1. Entrada de Datos (Input)
+Tienes dos formas de usar la herramienta:
 
-1. Crea un entorno virtual:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # En Windows: venv\Scripts\activate
-   ```
+*   **Desde la Web**: Ingresa un tema y un título sugerido en la interfaz visual.
+*   **Desde Google Sheets**: Conecta tu hoja de cálculo. La herramienta detectará automáticamente las nuevas filas con "Palabra clave" y "Título" y las procesará en segundo plano (individualmente o por lotes).
 
-2. Instala dependencias:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 2. Procesamiento Inteligente
+El sistema utiliza los modelos más recientes de **Google Gemini** para ejecutar el ciclo de 4 fases (Planificar -> Redactar -> Revisar -> Pulir), asegurando que el contenido sea coherente, útil y optimizado.
 
-3. Crea un archivo `.env` con tu API key:
-   ```
-   api_key=tu-api-key-aqui
-   ```
+### 3. Salida Automática (Output)
+Olvídate de copiar y pegar.
+*   **Google Drive**: Cada artículo generado se convierte automáticamente en un documento de Google Docs y se guarda en una carpeta específica ("redactor") en tu unidad de Drive conectada.
+*   **Visualización Web**: También puedes ver y copiar el resultado HTML directamente desde la aplicación.
 
-4. Ejecuta la aplicación:
-   ```bash
-   python app.py
-   ```
+## Características Clave
 
-5. Abre tu navegador en: `http://localhost:5000`
+*   **Integración Total**: Google Sheets → Redactor → Google Drive.
+*   **Persistencia de Sesión**: Tu conexión con Google Drive se mantiene entre sesiones para que no tengas que loguearte cada vez.
+*   **Modo Batch**: Procesa docenas de temas a la vez desde tu hoja de cálculo.
+*   **Calidad SEO**: Prompts diseñados por expertos para cumplir con los principios E-E-A-T.
+
+## Configuración Rápida
+
+1.  **Requisitos**: Python 3.8+ y una API Key de Google Gemini.
+2.  **Instalación**:
+    ```bash
+    pip install -r requirements.txt
+    ```
+3.  **Variables de Entorno**: Crea un archivo `.env` con:
+    ```
+    api_key=TU_API_KEY_DE_GEMINI
+    SECRET_KEY=una_clave_segura
+    ```
+4.  **Ejecución**:
+    ```bash
+    python app.py
+    ```
+
+¡Empieza a escalar tu producción de contenidos hoy mismo!
