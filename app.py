@@ -673,10 +673,7 @@ def index():
                         except:
                             pass
                     
-                    if not creds_dict:
-                         return jsonify({"status": "error", "message": "No estás autenticado en Google Drive. Por favor visita la web y conecta Drive primero."}), 401
-                    
-                    # Start background thread
+                    # Start background thread (even if no creds, might find them later or fail silently)
                     thread = threading.Thread(target=process_batch, args=(rows, creds_dict))
                     thread.daemon = True # Daemon thread so it doesn't block app shutdown
                     thread.start()
@@ -697,9 +694,6 @@ def index():
                         except:
                             pass
                     
-                    if not creds_dict:
-                         return jsonify({"status": "error", "message": "No está conectado en google drive, por favor vaya a https://redactor-e1sp.onrender.com y conecte a google drive"}), 401
-
                     # Create a list with the single item to reuse process_batch logic
                     rows = [data]
                     
