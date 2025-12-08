@@ -634,32 +634,47 @@ def auth_status():
                 creds_dict = json.load(f)
         else:
              return jsonify({"authenticated": False})
-        
+
         # Check if credentials are valid
         creds = Credentials(**creds_dict)
-        
+
         # Try to refresh if expired
         if creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
                 new_creds_dict = credentials_to_dict(creds)
-                
+
                 # Update session
                 if 'credentials' in session:
                      session['credentials'] = new_creds_dict
-                
+
                 # Update file
                 with open(TOKEN_FILE, 'w') as f:
                     json.dump(new_creds_dict, f)
-            except:
+
+                creds_dict = new_creds_dict
+            except Exception as refresh_error:
                 # Refresh failed, need to re-authorize
+                print(f"Token refresh failed: {refresh_error}")
                 if 'credentials' in session: session.pop('credentials', None)
                 if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
                 return jsonify({"authenticated": False})
-        
-        return jsonify({"authenticated": True})
-        
+
+        # IMPORTANT: Actually verify the credentials work by making a real API call
+        try:
+            service = build('drive', 'v3', credentials=creds)
+            # Make a lightweight API call to verify access
+            service.about().get(fields="user").execute()
+            return jsonify({"authenticated": True})
+        except Exception as api_error:
+            # API call failed - credentials don't actually work
+            print(f"Drive API verification failed: {api_error}")
+            if 'credentials' in session: session.pop('credentials', None)
+            if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+            return jsonify({"authenticated": False})
+
     except Exception as e:
+        print(f"Auth status check error: {e}")
         return jsonify({"authenticated": False, "error": str(e)})
 
 @app.route('/disconnect-drive', methods=['POST'])
