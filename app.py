@@ -170,15 +170,17 @@ You are an Elite SEO Content Strategist and Senior Copywriter specialized in the
             raise Exception(f"Generation failed with no content. Reason: {finish_reason}")
 
     content = response.text
-    
+
     # If MAX_TOKENS (2) but we have content, we might want to warn but proceed
+    truncated = False
     if finish_reason == 2:
         print("WARNING: Generation truncated due to max tokens.")
+        truncated = True
 
     # Clean up response object to free memory
     del response
     gc.collect()
-    return content
+    return content, truncated
 
 # OAuth 2.0 Configuration
 SCOPES = ['https://www.googleapis.com/auth/drive']
@@ -358,12 +360,14 @@ Your output must include:
 Do *not* write the article.
 Produce only the complete outline."""
 
-        plan = generate_completion(prompt_phase_1, max_tokens=600)
+        plan, truncated_phase_1 = generate_completion(prompt_phase_1, max_tokens=600)
         if not plan:
             if yield_json: yield json.dumps({"error": "Error en Fase 1: No se pudo generar el plan"}) + "\n"
             return
-            
-        if yield_json: yield json.dumps({"status": "phase_1_done", "data": plan}) + "\n"
+
+        if yield_json:
+            status = "phase_1_truncated" if truncated_phase_1 else "phase_1_done"
+            yield json.dumps({"status": status, "data": plan}) + "\n"
         del prompt_phase_1
         gc.collect()
 
@@ -393,17 +397,25 @@ Write the full article now."""
             return
 
         draft = ""
+        truncated_phase_2 = False
         for chunk in stream:
             if hasattr(chunk, 'text') and chunk.text:
                 content_chunk = chunk.text
                 draft += content_chunk
                 if yield_json: yield json.dumps({"status": "phase_2_stream", "chunk": content_chunk}) + "\n"
-        
+            # Check for truncation
+            if hasattr(chunk, 'candidates') and chunk.candidates:
+                finish_reason = chunk.candidates[0].finish_reason
+                if finish_reason == 2:  # MAX_TOKENS
+                    truncated_phase_2 = True
+
         if not draft:
             if yield_json: yield json.dumps({"error": "Error en Fase 2: Borrador vacío"}) + "\n"
             return
 
-        if yield_json: yield json.dumps({"status": "phase_2_done", "data": "Borrador completado"}) + "\n"
+        if yield_json:
+            status = "phase_2_truncated" if truncated_phase_2 else "phase_2_done"
+            yield json.dumps({"status": status, "data": "Borrador completado"}) + "\n"
         del prompt_phase_2
         gc.collect()
 
@@ -427,12 +439,14 @@ Identify and list:
 
 Provide **specific, actionable corrections** without rewriting the entire article."""
 
-        critique = generate_completion(prompt_phase_3, max_tokens=800)
+        critique, truncated_phase_3 = generate_completion(prompt_phase_3, max_tokens=800)
         if not critique:
             if yield_json: yield json.dumps({"error": "Error en Fase 3: No se pudo generar la crítica"}) + "\n"
             return
 
-        if yield_json: yield json.dumps({"status": "phase_3_done", "data": critique}) + "\n"
+        if yield_json:
+            status = "phase_3_truncated" if truncated_phase_3 else "phase_3_done"
+            yield json.dumps({"status": status, "data": critique}) + "\n"
         del prompt_phase_3
         gc.collect()
 
@@ -463,11 +477,17 @@ Generate the article *in Spanish* (from Spain)."""
             return
 
         final_article = ""
+        truncated_phase_4 = False
         for chunk in stream_final:
             if hasattr(chunk, 'text') and chunk.text:
                 content_chunk = chunk.text
                 final_article += content_chunk
                 if yield_json: yield json.dumps({"status": "phase_4_stream", "chunk": content_chunk}) + "\n"
+            # Check for truncation
+            if hasattr(chunk, 'candidates') and chunk.candidates:
+                finish_reason = chunk.candidates[0].finish_reason
+                if finish_reason == 2:  # MAX_TOKENS
+                    truncated_phase_4 = True
 
         if not final_article:
              if yield_json: yield json.dumps({"error": "Error en Fase 4: El artículo final se generó vacío."}) + "\n"
@@ -480,6 +500,11 @@ Generate the article *in Spanish* (from Spain)."""
         final_article = re.sub(r'```', '', final_article)
         # Remove leading/trailing whitespace
         final_article = final_article.strip()
+
+        # Send phase 4 completion status before the final article
+        if yield_json:
+            status = "phase_4_truncated" if truncated_phase_4 else "phase_4_done"
+            yield json.dumps({"status": status, "data": "Artículo finalizado"}) + "\n"
 
         del prompt_phase_4, critique, draft, plan, truncated_draft
         gc.collect()
