@@ -397,9 +397,12 @@ Write the full article now."""
         # Phase 3: Revisión
         if yield_json: yield json.dumps({"status": "phase_3", "message": "Revisando contenido..."}) + "\n"
 
+        # Truncate to avoid excessive tokens (increased limit for better coverage)
+        truncated_draft = draft[:30000]
+
         prompt_phase_3 = f"""Evaluate and critique the following article with the goal of boosting SEO performance:
 
-{draft}
+{truncated_draft}
 
 Identify and list:
 
@@ -426,7 +429,7 @@ Provide **specific, actionable corrections** without rewriting the entire articl
         prompt_phase_4 = f"""Using the following article and its critique:
 
 **Original Article:**
-{draft}
+{truncated_draft}
 
 **Review:**
 {critique}
@@ -457,7 +460,7 @@ Do not include images."""
 
         # Cleanup
         final_article = final_article.replace("```html", "").replace("```", "")
-        del prompt_phase_4, critique, draft, plan
+        del prompt_phase_4, critique, draft, plan, truncated_draft
         gc.collect()
 
         if yield_json:
