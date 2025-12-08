@@ -155,6 +155,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             debugPlan.textContent = data.data;
                             step1.classList.remove('active');
                             step1.classList.add('completed');
+                        } else if (data.status === 'phase_1_truncated') {
+                            debugPlan.textContent = data.data;
+                            step1.classList.remove('active');
+                            step1.classList.add('truncated');
+                            step1.textContent = '1. Planificación (Truncado)';
                         } else if (data.status === 'phase_2') {
                             btnText.textContent = 'Fase 2: Redactando...';
                             debugDraft.innerHTML = ''; // Clear previous
@@ -166,6 +171,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             // Phase 2 complete
                             step2.classList.remove('active');
                             step2.classList.add('completed');
+                        } else if (data.status === 'phase_2_truncated') {
+                            step2.classList.remove('active');
+                            step2.classList.add('truncated');
+                            step2.textContent = '2. Redacción (Truncado)';
                         } else if (data.status === 'phase_3') {
                             btnText.textContent = 'Fase 3: Revisando...';
                             step3.classList.add('active');
@@ -173,6 +182,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             debugCritique.textContent = data.data;
                             step3.classList.remove('active');
                             step3.classList.add('completed');
+                        } else if (data.status === 'phase_3_truncated') {
+                            debugCritique.textContent = data.data;
+                            step3.classList.remove('active');
+                            step3.classList.add('truncated');
+                            step3.textContent = '3. Revisión (Truncado)';
                         } else if (data.status === 'phase_4') {
                             btnText.textContent = 'Fase 4: Finalizando...';
                             articleContent.innerHTML = ''; // Clear previous
@@ -180,12 +194,18 @@ document.addEventListener('DOMContentLoaded', () => {
                         } else if (data.status === 'phase_4_stream') {
                             // Append streaming content to final article view
                             articleContent.innerHTML += data.chunk;
+                        } else if (data.status === 'phase_4_done') {
+                            step4.classList.remove('active');
+                            step4.classList.add('completed');
+                        } else if (data.status === 'phase_4_truncated') {
+                            step4.classList.remove('active');
+                            step4.classList.add('truncated');
+                            step4.textContent = '4. Finalización (Truncado)';
                         } else if (data.status === 'complete') {
                             // Ensure final clean version is set
                             articleContent.innerHTML = data.final_article;
                             btnText.textContent = '¡Completado!';
-                            step4.classList.remove('active');
-                            step4.classList.add('completed');
+                            // Don't modify step4 here - it's already been set by phase_4_done or phase_4_truncated
                             resultsSection.style.display = 'block';
                             document.getElementById('sendToDriveBtn').disabled = false;
 

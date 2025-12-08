@@ -166,6 +166,18 @@ button:disabled {
     color: var(--success-color);
 }
 
+.step.truncated {
+    color: #ca8a04;
+    font-weight: 600;
+    background: #fefce8;
+    border-color: #eab308;
+}
+
+.step.truncated::before {
+    content: '⚠';
+    color: #eab308;
+}
+
 @keyframes pulse {
     0%, 100% {
         opacity: 1;
