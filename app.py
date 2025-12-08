@@ -331,15 +331,16 @@ def generate_article_logic(topic, title, yield_json=True):
         # Phase 1: Planificación
         if yield_json: yield json.dumps({"status": "phase_1", "message": "Generando esquema SEO..."}) + "\n"
         
-        prompt_phase_1 = f"""Genera un esquema detallado para un artículo optimizado para SEO sobre: {topic}.
-Título sugerido: {title}
-Incluye:
-– Intención de búsqueda.
-– Palabras clave principales y secundarias.
-– Estructura H1/H2/H3 muy específica.
-– Puntos clave que deben cubrirse en cada sección.
-– Ejemplos concretos para mejorar calidad.
-No escribas el contenido. Solo el plan."""
+        prompt_phase_1 = f"""Generate a detailed and SEO-optimized outline for an article about: {topic}
+Suggested title: {title}
+Your output must include:
+Search intent of the user.
+Primary and secondary keywords.
+A highly specific H1 / H2 / H3 structure.
+Key points to be covered in every section.
+Concrete examples that enhance clarity and depth.
+Do not write the article.
+Produce only the complete outline."""
 
         plan = generate_completion(prompt_phase_1, max_tokens=800)
         if not plan:
@@ -353,15 +354,8 @@ No escribas el contenido. Solo el plan."""
         # Phase 2: Redacción
         if yield_json: yield json.dumps({"status": "phase_2", "message": "Redactando borrador..."}) + "\n"
         
-        prompt_phase_2 = f"""Usa exclusivamente el siguiente esquema para redactar el artículo.
-No añadas nuevas secciones.
-Mantén claridad, precisión y evita relleno.
-Incluye datos verificables o neutrales cuando proceda.
-Aplica densidad de palabra clave moderada.
-No repitas ideas con sinónimos.
-Aquí tienes el esquema:
-{plan}
-Escribe el artículo completo en formato HTML (usa etiquetas h1, h2, p, ul, li, etc. pero sin html/body tags)."""
+        prompt_phase_2 = f"""Write the full article exclusively following this outline:
+{plan}"""
 
         # Stream Phase 2 content
         stream = generate_completion(prompt_phase_2, max_tokens=1200, stream=True)
@@ -413,16 +407,20 @@ Aquí está el artículo:
         # Phase 4: Finalización
         if yield_json: yield json.dumps({"status": "phase_4", "message": "Aplicando mejoras finales..."}) + "\n"
         
-        prompt_phase_4 = f"""Teniendo en cuenta el siguiente artículo y la revisión crítica, genera la versión final y pulida del artículo.
-Aplica las correcciones sugeridas.
-Devuelve SOLO el código HTML del artículo final (sin markdown ```html, solo el contenido).
-No incluyas imágenes.
+        prompt_phase_4 = f"""Using the following article and its critique:
 
-Artículo original:
+**Original Article:**
 {truncated_draft}
 
-Revisión:
-{critique}"""
+**Review:**
+{critique}
+
+Produce the **final, polished version** of the article.
+
+Apply all suggested corrections and enhancements.
+
+Return **only the HTML article code**, with no Markdown, no explanations, and no `<html>` or `<body>` tags.
+Do not include images."""
 
         # Stream Phase 4 content
         stream_final = generate_completion(prompt_phase_4, max_tokens=1500, stream=True)
