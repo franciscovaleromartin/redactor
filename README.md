@@ -49,7 +49,9 @@ Olvídate de copiar y pegar.
     ```
     api_key=TU_API_KEY_DE_GEMINI
     SECRET_KEY=una_clave_segura
+    DRIVE_FOLDER_ID=tu_id_de_carpeta_de_drive (opcional)
     ```
+    **Nota**: El `DRIVE_FOLDER_ID` es opcional. Si lo configuras, los artículos se guardarán en esa carpeta específica de Google Drive en lugar de buscar/crear una carpeta llamada "redactor". Para obtener el ID de tu carpeta, copia el ID de la URL de Drive (ej: `https://drive.google.com/drive/folders/ID_AQUI`).
 4.  **Ejecución**:
     ```bash
     python app.py

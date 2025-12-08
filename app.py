@@ -257,12 +257,25 @@ def get_drive_service(creds_dict=None):
     return service
 
 def find_or_create_folder(service, folder_name='redactor'):
-    """Find or create a folder in Google Drive by name."""
+    """Find or create a folder in Google Drive by name, or use specific folder ID from environment."""
+    # Check if a specific folder ID is configured
+    folder_id = os.environ.get('DRIVE_FOLDER_ID')
+
+    if folder_id:
+        # Verify the folder exists and is accessible
+        try:
+            folder = service.files().get(fileId=folder_id, fields='id, name').execute()
+            print(f"Using configured folder: {folder.get('name')} (ID: {folder_id})")
+            return folder_id
+        except Exception as e:
+            print(f"Warning: Configured folder ID {folder_id} not accessible: {e}")
+            print("Falling back to search by name...")
+
     # Search for folder by name (case-insensitive-ish: check for 'redactor' and 'Redactor')
     query = f"(name='{folder_name}' or name='{folder_name.capitalize()}') and mimeType='application/vnd.google-apps.folder' and trashed=false"
     results = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
     folders = results.get('files', [])
-    
+
     if folders:
         # Folder exists, return the first match
         print(f"Found existing folder: {folders[0]['name']} (ID: {folders[0]['id']})")
