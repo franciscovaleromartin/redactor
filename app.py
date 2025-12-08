@@ -374,7 +374,7 @@ Requirements:
 Write the full article now."""
 
         # Stream Phase 2 content
-        stream = generate_completion(prompt_phase_2, max_tokens=1200, stream=True)
+        stream = generate_completion(prompt_phase_2, max_tokens=1000, stream=True)
         if not stream:
             if yield_json: yield json.dumps({"error": "Error en Fase 2: No se pudo iniciar la redacción"}) + "\n"
             return
@@ -398,7 +398,7 @@ Write the full article now."""
         if yield_json: yield json.dumps({"status": "phase_3", "message": "Revisando contenido..."}) + "\n"
         
         # Truncate to avoid excessive tokens
-        truncated_draft = draft[:12000] 
+        truncated_draft = draft[:15000] 
         
         prompt_phase_3 = f"""Evaluate and critique the following article with the goal of boosting SEO performance:
 
