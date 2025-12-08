@@ -42,11 +42,11 @@ if api_key:
 
 # Try models in order of preference until one works
 AVAILABLE_MODELS = [
+    "models/gemini-3.0-pro",        # 3.0 Pro Para produccion - PRIMERA PREFERENCIA
     "models/gemini-2.0-flash",      # New stable
     "models/gemini-2.0-flash-exp",  # Experimental
     "models/gemini-2.5-flash",      # Latest
     "models/gemini-2.0-pro-exp",    # Pro Experimental
-    ''' "models/gemini-3.0-pro",        # 3.0 Pro Para produccion '''
 ]
 
 def get_working_model():
