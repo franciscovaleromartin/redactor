@@ -345,7 +345,7 @@ Your output must include:
 Do *not* write the article.
 Produce only the complete outline."""
 
-        plan = generate_completion(prompt_phase_1, max_tokens=600)
+        plan = generate_completion(prompt_phase_1, max_tokens=800)
         if not plan:
             if yield_json: yield json.dumps({"error": "Error en Fase 1: No se pudo generar el plan"}) + "\n"
             return
@@ -374,7 +374,7 @@ Requirements:
 Write the full article now."""
 
         # Stream Phase 2 content
-        stream = generate_completion(prompt_phase_2, max_tokens=1000, stream=True)
+        stream = generate_completion(prompt_phase_2, max_tokens=1200, stream=True)
         if not stream:
             if yield_json: yield json.dumps({"error": "Error en Fase 2: No se pudo iniciar la redacción"}) + "\n"
             return
@@ -396,10 +396,10 @@ Write the full article now."""
 
         # Phase 3: Revisión
         if yield_json: yield json.dumps({"status": "phase_3", "message": "Revisando contenido..."}) + "\n"
-
-        # Truncate to avoid excessive tokens (increased limit for better coverage)
-        truncated_draft = draft[:30000]
-
+        
+        # Truncate to avoid excessive tokens
+        truncated_draft = draft[:12000] 
+        
         prompt_phase_3 = f"""Evaluate and critique the following article with the goal of boosting SEO performance:
 
 {truncated_draft}
@@ -414,7 +414,7 @@ Identify and list:
 
 Provide **specific, actionable corrections** without rewriting the entire article."""
 
-        critique = generate_completion(prompt_phase_3, max_tokens=600)
+        critique = generate_completion(prompt_phase_3, max_tokens=800)
         if not critique:
             if yield_json: yield json.dumps({"error": "Error en Fase 3: No se pudo generar la crítica"}) + "\n"
             return
@@ -442,7 +442,7 @@ Return **only the HTML article code**, with no Markdown, no explanations, and no
 Do not include images."""
 
         # Stream Phase 4 content
-        stream_final = generate_completion(prompt_phase_4, max_tokens=1200, stream=True)
+        stream_final = generate_completion(prompt_phase_4, max_tokens=1500, stream=True)
         if not stream_final:
             if yield_json: yield json.dumps({"error": "Error en Fase 4: No se pudo iniciar la versión final"}) + "\n"
             return
