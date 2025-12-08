@@ -94,6 +94,11 @@ document.addEventListener('DOMContentLoaded', () => {
         debugDraft.innerHTML = '';
         debugCritique.textContent = '';
 
+        // Reset step indicators
+        document.querySelectorAll('.step').forEach(step => {
+            step.classList.remove('active', 'completed');
+        });
+
         const formData = {
             topic: document.getElementById('topic').value,
             title: document.getElementById('title').value
@@ -136,26 +141,42 @@ document.addEventListener('DOMContentLoaded', () => {
                             throw new Error(data.error);
                         }
 
+                        // Get step elements
+                        const step1 = document.getElementById('step1');
+                        const step2 = document.getElementById('step2');
+                        const step3 = document.getElementById('step3');
+                        const step4 = document.getElementById('step4');
+
                         // Update UI based on status
                         if (data.status === 'phase_1') {
                             btnText.textContent = 'Fase 1: Planificando...';
+                            step1.classList.add('active');
                         } else if (data.status === 'phase_1_done') {
                             debugPlan.textContent = data.data;
+                            step1.classList.remove('active');
+                            step1.classList.add('completed');
                         } else if (data.status === 'phase_2') {
                             btnText.textContent = 'Fase 2: Redactando...';
                             debugDraft.innerHTML = ''; // Clear previous
+                            step2.classList.add('active');
                         } else if (data.status === 'phase_2_stream') {
                             // Append streaming content to draft debug view
                             debugDraft.innerHTML += data.chunk.replace(/\n/g, '<br>');
                         } else if (data.status === 'phase_2_done') {
                             // Phase 2 complete
+                            step2.classList.remove('active');
+                            step2.classList.add('completed');
                         } else if (data.status === 'phase_3') {
                             btnText.textContent = 'Fase 3: Revisando...';
+                            step3.classList.add('active');
                         } else if (data.status === 'phase_3_done') {
                             debugCritique.textContent = data.data;
+                            step3.classList.remove('active');
+                            step3.classList.add('completed');
                         } else if (data.status === 'phase_4') {
                             btnText.textContent = 'Fase 4: Finalizando...';
                             articleContent.innerHTML = ''; // Clear previous
+                            step4.classList.add('active');
                         } else if (data.status === 'phase_4_stream') {
                             // Append streaming content to final article view
                             articleContent.innerHTML += data.chunk;
@@ -163,6 +184,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             // Ensure final clean version is set
                             articleContent.innerHTML = data.final_article;
                             btnText.textContent = '¡Completado!';
+                            step4.classList.remove('active');
+                            step4.classList.add('completed');
                             resultsSection.style.display = 'block';
                             document.getElementById('sendToDriveBtn').disabled = false;
 
