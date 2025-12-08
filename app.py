@@ -439,7 +439,9 @@ Produce the **final, polished version** of the article.
 Apply all suggested corrections and enhancements.
 
 Return **only the HTML article code**, with no Markdown, no explanations, and no `<html>` or `<body>` tags.
-Do not include images."""
+Do not include images.
+
+Generate the article *in Spanish* (from Spain)."""
 
         # Stream Phase 4 content
         stream_final = generate_completion(prompt_phase_4, max_tokens=1500, stream=True)
