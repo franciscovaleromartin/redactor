@@ -345,7 +345,7 @@ Your output must include:
 Do *not* write the article.
 Produce only the complete outline."""
 
-        plan = generate_completion(prompt_phase_1, max_tokens=800)
+        plan = generate_completion(prompt_phase_1, max_tokens=600)
         if not plan:
             if yield_json: yield json.dumps({"error": "Error en Fase 1: No se pudo generar el plan"}) + "\n"
             return
