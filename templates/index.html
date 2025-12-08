@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redactor - Generador de Artículos SEO</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h1>Redactor</h1>
+                    <p>Generador de contenido optimizado para SEO con IA</p>
+                </div>
+                <div id="driveConnectionStatus" style="text-align: right;">
+                    <button id="connectDriveBtn" class="secondary-btn" style="display: none;">
+                        🔗 Conectar Google Drive
+                    </button>
+                    <div id="connectedIndicator" style="display: none;">
+                        <span style="color: #10b981; font-weight: 600;">✓ Google Drive Conectado</span>
+                        <button id="disconnectDriveBtn" class="secondary-btn"
+                            style="margin-left: 10px; background-color: #ef4444;">
+                            Desconectar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <section class="input-section">
+                <form id="articleForm">
+                    <div class="form-group">
+                        <label for="topic">Tema / Palabras Clave</label>
+                        <input type="text" id="topic" name="topic" placeholder="Ej: Marketing Digital, SEO, IA"
+                            value="{{ topic }}" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="title">Título Sugerido (Opcional)</label>
+                        <input type="text" id="title" name="title"
+                            placeholder="Ej: Guía completa de Marketing Digital 2024" value="{{ title }}">
+                    </div>
+
+                    <div class="button-group" style="display: flex; gap: 10px; align-items: center; margin-top: 20px;">
+                        <button type="submit" id="generateBtn">
+                            <span class="btn-text">Generar Artículo</span>
+                            <span class="loader" style="display: none;"></span>
+                        </button>
+                        <button type="button" id="sendToDriveBtn" class="secondary-btn" disabled>
+                            Enviar a Google Drive
+                        </button>
+                    </div>
+                    <div id="driveStatus" style="margin-top: 10px;"></div>
+                </form>
+            </section>
+
+            <section id="resultsSection" class="results-section" style="display: none;">
+                <div class="status-indicator">
+                    <div class="step" id="step1">1. Planificación</div>
+                    <div class="step" id="step2">2. Redacción</div>
+                    <div class="step" id="step3">3. Revisión</div>
+                    <div class="step" id="step4">4. Finalización</div>
+                </div>
+
+                <div class="result-container">
+                    <h2>Artículo Generado</h2>
+                    <div id="articleContent" class="article-content"></div>
+                </div>
+
+                <details class="debug-details">
+                    <summary>Ver detalles del proceso (Debug)</summary>
+                    <div class="debug-content">
+                        <h3>Planificación</h3>
+                        <pre id="debugPlan"></pre>
+                        <h3>Borrador</h3>
+                        <div id="debugDraft"></div>
+                        <h3>Crítica</h3>
+                        <pre id="debugCritique"></pre>
+                    </div>
+                </details>
+            </section>
+        </main>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+
+</html>
