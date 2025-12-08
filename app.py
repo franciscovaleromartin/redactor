@@ -369,6 +369,7 @@ Requirements:
 - Apply **moderate** keyword density.
 - Avoid repeating ideas using synonyms.
 - Output the article in clean **HTML format** using semantic tags (h1, h2, h3, p, ul, li…), but **do not include** `<html>` or `<body>` tags.
+- At the end of the article, include a **final closing paragraph**, but do **not** label it as a conclusion and do **not** use the words "conclusion", "summary", "resumen", or any synonym. It must simply function as the natural final paragraph of the article.
 
 Write the full article now."""
 
