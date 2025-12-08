@@ -473,8 +473,14 @@ Generate the article *in Spanish* (from Spain)."""
              if yield_json: yield json.dumps({"error": "Error en Fase 4: El artículo final se generó vacío."}) + "\n"
              return
 
-        # Cleanup
-        final_article = final_article.replace("```html", "").replace("```", "")
+        # Cleanup - Remove markdown code blocks and extra whitespace
+        import re
+        # Remove markdown code block markers (case insensitive, with or without spaces)
+        final_article = re.sub(r'```\s*html\s*', '', final_article, flags=re.IGNORECASE)
+        final_article = re.sub(r'```', '', final_article)
+        # Remove leading/trailing whitespace
+        final_article = final_article.strip()
+
         del prompt_phase_4, critique, draft, plan, truncated_draft
         gc.collect()
 
