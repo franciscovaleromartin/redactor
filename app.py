@@ -360,7 +360,7 @@ Your output must include:
 Do *not* write the article.
 Produce only the complete outline."""
 
-        plan, truncated_phase_1 = generate_completion(prompt_phase_1, max_tokens=1000)
+        plan, truncated_phase_1 = generate_completion(prompt_phase_1, max_tokens=500)
         if not plan:
             if yield_json: yield json.dumps({"error": "Error en Fase 1: No se pudo generar el plan"}) + "\n"
             return
@@ -391,7 +391,7 @@ Requirements:
 Write the full article now."""
 
         # Stream Phase 2 content
-        stream = generate_completion(prompt_phase_2, max_tokens=1000, stream=True)
+        stream = generate_completion(prompt_phase_2, max_tokens=500, stream=True)
         if not stream:
             if yield_json: yield json.dumps({"error": "Error en Fase 2: No se pudo iniciar la redacción"}) + "\n"
             return
@@ -439,7 +439,7 @@ Identify and list:
 
 Provide **specific, actionable corrections** without rewriting the entire article."""
 
-        critique, truncated_phase_3 = generate_completion(prompt_phase_3, max_tokens=1000)
+        critique, truncated_phase_3 = generate_completion(prompt_phase_3, max_tokens=500)
         if not critique:
             if yield_json: yield json.dumps({"error": "Error en Fase 3: No se pudo generar la crítica"}) + "\n"
             return
