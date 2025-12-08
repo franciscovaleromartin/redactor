@@ -1,10 +1,10 @@
-# Redactor SIDN
+# Redactor
 
-**Redactor SIDN** es una herramienta avanzada de automatización de contenidos que utiliza Inteligencia Artificial (Google Gemini) para generar artículos optimizados para SEO de alta calidad.
+**Redactor** es una herramienta avanzada de automatización de contenidos que utiliza Inteligencia Artificial (Google Gemini) para generar artículos optimizados para SEO de alta calidad.
 
 Diseñada para flujos de trabajo profesionales, permite generar contenido desde una interfaz web o directamente desde **Google Sheets**, guardando los resultados automáticamente en **Google Drive**.
 
-## ¿Por qué Redactor SIDN?
+## ¿Por qué Redactor?
 
 Generar contenido de calidad para SEO requiere tiempo y estructura. Esta herramienta automatiza el proceso emulando el flujo de trabajo de un redactor experto:
 
