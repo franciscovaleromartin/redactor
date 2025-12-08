@@ -345,7 +345,7 @@ Your output must include:
 Do *not* write the article.
 Produce only the complete outline."""
 
-        plan = generate_completion(prompt_phase_1, max_tokens=800)
+        plan = generate_completion(prompt_phase_1, max_tokens=600)
         if not plan:
             if yield_json: yield json.dumps({"error": "Error en Fase 1: No se pudo generar el plan"}) + "\n"
             return
@@ -374,7 +374,7 @@ Requirements:
 Write the full article now."""
 
         # Stream Phase 2 content
-        stream = generate_completion(prompt_phase_2, max_tokens=1200, stream=True)
+        stream = generate_completion(prompt_phase_2, max_tokens=1000, stream=True)
         if not stream:
             if yield_json: yield json.dumps({"error": "Error en Fase 2: No se pudo iniciar la redacción"}) + "\n"
             return
@@ -414,7 +414,7 @@ Identify and list:
 
 Provide **specific, actionable corrections** without rewriting the entire article."""
 
-        critique = generate_completion(prompt_phase_3, max_tokens=800)
+        critique = generate_completion(prompt_phase_3, max_tokens=600)
         if not critique:
             if yield_json: yield json.dumps({"error": "Error en Fase 3: No se pudo generar la crítica"}) + "\n"
             return
@@ -442,7 +442,7 @@ Return **only the HTML article code**, with no Markdown, no explanations, and no
 Do not include images."""
 
         # Stream Phase 4 content
-        stream_final = generate_completion(prompt_phase_4, max_tokens=1500, stream=True)
+        stream_final = generate_completion(prompt_phase_4, max_tokens=1200, stream=True)
         if not stream_final:
             if yield_json: yield json.dumps({"error": "Error en Fase 4: No se pudo iniciar la versión final"}) + "\n"
             return
