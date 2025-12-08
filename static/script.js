@@ -241,8 +241,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const content = articleContent.innerHTML;
-        // Use the suggested title or a default one
-        let title = document.getElementById('title').value;
+        // Extract title from the generated article's H1 tag
+        let title = '';
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = content;
+        const h1Element = tempDiv.querySelector('h1');
+
+        if (h1Element) {
+            title = h1Element.textContent.trim();
+        }
+
+        // Fallback to form title or topic if no H1 found
+        if (!title) {
+            title = document.getElementById('title').value;
+        }
         if (!title) {
             title = "Articulo - " + document.getElementById('topic').value;
         }
