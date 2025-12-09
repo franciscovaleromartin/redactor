@@ -38,6 +38,7 @@ build/
 oauth_credentials.json
 token.json
 service_account.json
+api_tokens.json
 
 # Temporary files and documentation
 desplegar.rtf
