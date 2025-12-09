@@ -185,54 +185,7 @@ You are an Elite SEO Content Strategist and Senior Copywriter specialized in the
 # OAuth 2.0 Configuration
 SCOPES = ['https://www.googleapis.com/auth/drive']
 OAUTH_CREDENTIALS_FILE = 'oauth_credentials.json'
-# NOTE: Credentials are now stored ONLY in Flask sessions (not in files)
-# This ensures proper session isolation between different users
-
-# API Token Configuration
-API_TOKENS_FILE = 'api_tokens.json'
-import secrets
-import hashlib
-from datetime import datetime
-
-def load_api_tokens():
-    """Load API tokens from file."""
-    if os.path.exists(API_TOKENS_FILE):
-        try:
-            with open(API_TOKENS_FILE, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Error loading API tokens: {e}")
-            return {}
-    return {}
-
-def save_api_tokens(tokens):
-    """Save API tokens to file."""
-    try:
-        with open(API_TOKENS_FILE, 'w') as f:
-            json.dump(tokens, f, indent=2)
-    except Exception as e:
-        print(f"Error saving API tokens: {e}")
-
-def generate_api_token():
-    """Generate a secure random API token."""
-    return secrets.token_urlsafe(32)
-
-def hash_token(token):
-    """Hash a token for secure storage."""
-    return hashlib.sha256(token.encode()).hexdigest()
-
-def get_credentials_from_token(token):
-    """Get credentials associated with an API token."""
-    tokens = load_api_tokens()
-    token_hash = hash_token(token)
-
-    if token_hash in tokens:
-        token_data = tokens[token_hash]
-        # Update last used timestamp
-        token_data['last_used'] = datetime.utcnow().isoformat()
-        save_api_tokens(tokens)
-        return token_data.get('credentials')
-    return None
+TOKEN_FILE = 'token.json'  # File to store user credentials
 
 def get_oauth_config():
     """Load OAuth configuration from file or environment variable."""
@@ -257,39 +210,51 @@ def credentials_to_dict(credentials):
 
 def get_drive_service(creds_dict=None):
     """Get authenticated Google Drive service using OAuth 2.0.
-
+    
     Args:
-        creds_dict (dict, optional): Credentials dictionary. If None, tries to get from session.
+        creds_dict (dict, optional): Credentials dictionary. If None, tries to get from session or file.
     """
     if creds_dict is None:
         if 'credentials' in session:
             creds_dict = session['credentials']
-        else:
+        elif os.path.exists(TOKEN_FILE):
+            # Fallback to local token file
+            try:
+                with open(TOKEN_FILE, 'r') as f:
+                    creds_dict = json.load(f)
+            except Exception as e:
+                print(f"Error reading token file: {e}")
+                
+        if not creds_dict:
             raise Exception("Not authenticated. Please authorize first by visiting /authorize")
-
+    
     # Load credentials
     creds = Credentials(**creds_dict)
-
+    
     # Refresh if expired
     if creds.expired and creds.refresh_token:
         try:
             creds.refresh(Request())
             # Update storage with refreshed token
             new_creds_dict = credentials_to_dict(creds)
-
+            
             # Update session if available
-            if request and hasattr(session, 'update'):
+            if request and hasattr(session, 'update'): 
                 # Check if we are in a request context
                 try:
                     session['credentials'] = new_creds_dict
                 except RuntimeError:
                     pass # Not in request context
 
+            # Update file
+            with open(TOKEN_FILE, 'w') as f:
+                json.dump(new_creds_dict, f)
+                
             creds_dict = new_creds_dict
         except Exception as e:
             print(f"Error refreshing token: {e}")
             raise Exception("Authentication expired. Please re-login.")
-
+    
     service = build('drive', 'v3', credentials=creds)
     return service
 
@@ -595,18 +560,23 @@ def process_batch(rows, credentials_dict=None):
     """
     print(f"Starting batch processing of {len(rows)} items...")
 
-    # Authenticate service once using the provided credentials
-    # Since this runs in a thread, we can't access 'session' directly
-    # We must pass the credentials dictionary explicitly
-    if not credentials_dict:
-        print(f"Batch Error: No credentials provided for batch processing")
-        return
-
+    # Authenticate service once if possible, or per request if needed.
+    # Since this runs in a thread, we can't access 'session' directly easily if it expires.
+    # We pass the credentials dictionary explicitly, or let get_drive_service load from file.
     try:
         service = get_drive_service(creds_dict=credentials_dict)
     except Exception as e:
         print(f"Batch Error: Could not authenticate Drive: {str(e)}")
-        return
+        # Try one more time forcing file load if creds_dict was None
+        if not credentials_dict:
+             try:
+                 print("Attempting to load credentials from file for batch...")
+                 service = get_drive_service() # Will try file
+             except Exception as e2:
+                 print(f"Batch Error (Fallback): {str(e2)}")
+                 return
+        else:
+             return
 
     for i, row in enumerate(rows):
         topic = row.get('palabra_clave')
@@ -719,13 +689,16 @@ def oauth2callback():
         
         # Exchange authorization code for tokens
         flow.fetch_token(authorization_response=request.url)
-
-        # Store credentials ONLY in session (not in file)
-        # This ensures each user has isolated credentials
+        
+        # Store credentials in session AND file
         credentials = flow.credentials
         creds_dict = credentials_to_dict(credentials)
         session['credentials'] = creds_dict
-
+        
+        # Persist to file
+        with open(TOKEN_FILE, 'w') as f:
+            json.dump(creds_dict, f)
+        
         # Redirect back to home page
         return redirect('/')
         
@@ -736,11 +709,14 @@ def oauth2callback():
 def auth_status():
     """Check if user is authenticated with Google Drive."""
     try:
-        # Check ONLY session (not file)
-        if 'credentials' not in session:
-            return jsonify({"authenticated": False})
-
-        creds_dict = session['credentials']
+        # Check session or file
+        if 'credentials' in session:
+            creds_dict = session['credentials']
+        elif os.path.exists(TOKEN_FILE):
+             with open(TOKEN_FILE, 'r') as f:
+                creds_dict = json.load(f)
+        else:
+             return jsonify({"authenticated": False})
 
         # Check if credentials are valid
         creds = Credentials(**creds_dict)
@@ -752,12 +728,19 @@ def auth_status():
                 new_creds_dict = credentials_to_dict(creds)
 
                 # Update session
-                session['credentials'] = new_creds_dict
+                if 'credentials' in session:
+                     session['credentials'] = new_creds_dict
+
+                # Update file
+                with open(TOKEN_FILE, 'w') as f:
+                    json.dump(new_creds_dict, f)
+
                 creds_dict = new_creds_dict
             except Exception as refresh_error:
                 # Refresh failed, need to re-authorize
                 print(f"Token refresh failed: {refresh_error}")
-                session.pop('credentials', None)
+                if 'credentials' in session: session.pop('credentials', None)
+                if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
                 return jsonify({"authenticated": False})
 
         # IMPORTANT: Actually verify the credentials work by making a real API call
@@ -769,7 +752,8 @@ def auth_status():
         except Exception as api_error:
             # API call failed - credentials don't actually work
             print(f"Drive API verification failed: {api_error}")
-            session.pop('credentials', None)
+            if 'credentials' in session: session.pop('credentials', None)
+            if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
             return jsonify({"authenticated": False})
 
     except Exception as e:
@@ -782,133 +766,12 @@ def disconnect_drive():
     try:
         if 'credentials' in session:
             session.pop('credentials', None)
-
+        
+        if os.path.exists(TOKEN_FILE):
+            os.remove(TOKEN_FILE)
+            
         return jsonify({"success": True, "message": "Disconnected from Google Drive"})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/generate-api-token', methods=['POST'])
-def generate_new_api_token():
-    """Generate a new API token for the authenticated user."""
-    try:
-        # User must be authenticated via session
-        if 'credentials' not in session:
-            return jsonify({"error": "Not authenticated. Please login first."}), 401
-
-        creds_dict = session['credentials']
-
-        # Generate new token
-        new_token = generate_api_token()
-        token_hash = hash_token(new_token)
-
-        # Get current user email for identification
-        try:
-            service = build('drive', 'v3', credentials=Credentials(**creds_dict))
-            about = service.about().get(fields="user").execute()
-            user_email = about.get('user', {}).get('emailAddress', 'unknown')
-        except Exception:
-            user_email = 'unknown'
-
-        # Load existing tokens
-        tokens = load_api_tokens()
-
-        # Store token with credentials
-        tokens[token_hash] = {
-            'credentials': creds_dict,
-            'created_at': datetime.utcnow().isoformat(),
-            'last_used': None,
-            'user_email': user_email
-        }
-
-        save_api_tokens(tokens)
-
-        return jsonify({
-            "success": True,
-            "token": new_token,
-            "message": "API token generated successfully. Keep this token secure!"
-        })
-
-    except Exception as e:
-        print(f"Error generating API token: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api-tokens', methods=['GET'])
-def list_api_tokens():
-    """List all API tokens for the current user."""
-    try:
-        # User must be authenticated via session
-        if 'credentials' not in session:
-            return jsonify({"error": "Not authenticated. Please login first."}), 401
-
-        creds_dict = session['credentials']
-
-        # Get current user email
-        try:
-            service = build('drive', 'v3', credentials=Credentials(**creds_dict))
-            about = service.about().get(fields="user").execute()
-            user_email = about.get('user', {}).get('emailAddress', 'unknown')
-        except Exception:
-            user_email = 'unknown'
-
-        # Load tokens and filter by user
-        tokens = load_api_tokens()
-        user_tokens = []
-
-        for token_hash, token_data in tokens.items():
-            if token_data.get('user_email') == user_email:
-                user_tokens.append({
-                    'token_hash': token_hash[:8] + '...',  # Show only first 8 chars
-                    'created_at': token_data.get('created_at'),
-                    'last_used': token_data.get('last_used')
-                })
-
-        return jsonify({"tokens": user_tokens})
-
-    except Exception as e:
-        print(f"Error listing API tokens: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/revoke-api-token', methods=['POST'])
-def revoke_api_token():
-    """Revoke an API token."""
-    try:
-        # User must be authenticated via session
-        if 'credentials' not in session:
-            return jsonify({"error": "Not authenticated. Please login first."}), 401
-
-        data = request.json
-        token_to_revoke = data.get('token')
-
-        if not token_to_revoke:
-            return jsonify({"error": "Token is required"}), 400
-
-        token_hash = hash_token(token_to_revoke)
-
-        # Load tokens
-        tokens = load_api_tokens()
-
-        if token_hash in tokens:
-            # Get current user email
-            creds_dict = session['credentials']
-            try:
-                service = build('drive', 'v3', credentials=Credentials(**creds_dict))
-                about = service.about().get(fields="user").execute()
-                user_email = about.get('user', {}).get('emailAddress', 'unknown')
-            except Exception:
-                user_email = 'unknown'
-
-            # Verify the token belongs to the current user
-            if tokens[token_hash].get('user_email') == user_email:
-                del tokens[token_hash]
-                save_api_tokens(tokens)
-                return jsonify({"success": True, "message": "Token revoked successfully"})
-            else:
-                return jsonify({"error": "Unauthorized to revoke this token"}), 403
-        else:
-            return jsonify({"error": "Token not found"}), 404
-
-    except Exception as e:
-        print(f"Error revoking API token: {e}")
         return jsonify({"error": str(e)}), 500
 
 DRAFT_FILE = 'latest_draft.json'
@@ -938,29 +801,24 @@ def index():
                      return jsonify({"status": "error", "message": "JSON must contain 'filas' list or 'palabra_clave'"}), 400
 
                 # Process whatever rows we have (1 or many)
-
-                # Try to get credentials from session OR API token
-                creds_dict = None
-
-                # 1. Check for API token in header (for Google Sheets and external APIs)
-                api_token = request.headers.get('X-API-Token')
-                if api_token:
-                    creds_dict = get_credentials_from_token(api_token)
-                    if not creds_dict:
-                        return jsonify({"status": "error", "message": "Invalid or expired API token."}), 401
-
-                # 2. Check for session credentials (for web browser)
+                
+                # Try to get credentials from session or file
+                creds_dict = session.get('credentials')
+                if not creds_dict and os.path.exists(TOKEN_FILE):
+                    try:
+                        with open(TOKEN_FILE, 'r') as f:
+                            creds_dict = json.load(f)
+                    except:
+                        pass
+                
                 if not creds_dict:
-                    creds_dict = session.get('credentials')
-
-                if not creds_dict:
-                    return jsonify({"status": "error", "message": "No estás autenticado en Google Drive. Por favor visita la web y conecta Drive primero, o proporciona un token de API válido."}), 401
-
+                        return jsonify({"status": "error", "message": "No estás autenticado en Google Drive. Por favor visita la web y conecta Drive primero."}), 401
+                
                 # Start background thread
                 thread = threading.Thread(target=process_batch, args=(rows, creds_dict))
                 thread.daemon = True # Daemon thread so it doesn't block app shutdown
                 thread.start()
-
+                
                 return jsonify({
                     "status": "processing_started",
                     "message": f"Se ha iniciado el procesamiento de {len(rows)} artículo(s) en segundo plano."
@@ -1012,8 +870,8 @@ def debug_drive():
         
         # Check Quota and User Info
         about = service.about().get(fields="storageQuota,user").execute()
-
-        # Check if OAuth credentials file exists
+        
+        # Check if token file exists (Variable TOKEN_FILE seems unused previously but we check OAUTH_CREDENTIALS_FILE)
         oauth_creds_status = "OAuth credentials exist" if os.path.exists(OAUTH_CREDENTIALS_FILE) else "OAuth credentials not found"
 
         return jsonify({
