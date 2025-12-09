@@ -292,38 +292,61 @@ def find_or_create_folder(service, folder_name='redactor'):
         folder = service.files().create(body=file_metadata, fields='id').execute()
         return folder.get('id')
 
+def extract_h1_from_html(html_content):
+    """
+    Extract the text content of the first H1 tag from HTML.
+
+    Args:
+        html_content (str): HTML content
+
+    Returns:
+        str: H1 text content or None if not found
+    """
+    import re
+    # Try to find H1 tag (case insensitive)
+    h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', html_content, re.IGNORECASE | re.DOTALL)
+    if h1_match:
+        # Get the content and remove any HTML tags inside
+        h1_text = h1_match.group(1)
+        # Remove any nested HTML tags
+        h1_text = re.sub(r'<[^>]+>', '', h1_text)
+        # Clean up whitespace
+        h1_text = h1_text.strip()
+        return h1_text
+    return None
+
 def save_article_to_drive(title, content, service=None, folder_name='redactor'):
     """
     Saves an article content to Google Drive.
-    
+
     Args:
         title (str): Title of the article
         content (str): HTML content of the article
         service: Google Drive service instance (optional, creates one if None)
         folder_name (str): Target folder name
-        
+
     Returns:
         dict: File metadata (id, link)
     """
     if not service:
         service = get_drive_service()
-        
+
     # Find or create folder
     folder_id = find_or_create_folder(service, folder_name)
-    
+
     # Create file metadata
     file_metadata = {
         'name': title,
         'mimeType': 'application/vnd.google-apps.document',  # Convert to Google Doc
         'parents': [folder_id]
     }
-    
+
     # Create media
     full_html = f"<html><body>{content}</body></html>"
     media = MediaIoBaseUpload(io.BytesIO(full_html.encode('utf-8')),
                                 mimetype='text/html',
                                 resumable=True)
-    
+
     # Upload file
     file = service.files().create(body=file_metadata,
                                     media_body=media,
@@ -558,42 +581,50 @@ def process_batch(rows, credentials_dict=None):
     for i, row in enumerate(rows):
         topic = row.get('palabra_clave')
         suggested_title = row.get('titulo_sugerido', '')
-        
+
         if not topic:
             continue
-            
+
         print(f"[{i+1}/{len(rows)}] Processing: {topic}")
-        
+
         try:
             # Generate Article
             # Iterate through the generator until the end to get the final result
             final_content = None
             generator = generate_article_logic(topic, suggested_title, yield_json=False)
-            
+
             for result in generator:
                 # The last yielded value from generate_article_logic(yield_json=False) is the final HTML
                 final_content = result
-            
+
             if final_content:
-                # Use suggested title or topic if not provided
-                doc_title = suggested_title if suggested_title else f"Articulo: {topic}"
-                
+                # Extract title from H1 tag in the generated HTML
+                doc_title = extract_h1_from_html(final_content)
+
+                # Fallback to suggested title or topic if no H1 found
+                if not doc_title:
+                    doc_title = suggested_title if suggested_title else f"Articulo: {topic}"
+                    print(f"Warning: No H1 found in generated article. Using fallback title: {doc_title}")
+
                 # Upload to Drive
                 print(f"Uploading '{doc_title}' to Drive...")
-                save_article_to_drive(doc_title, final_content, service=service)
+                file_info = save_article_to_drive(doc_title, final_content, service=service)
                 print(f"✓ Uploaded: {doc_title}")
+                print(f"  Drive link: {file_info.get('webViewLink', 'N/A')}")
             else:
                 print(f"✗ Failed to generate content for {topic}")
-                
+
         except Exception as e:
             print(f"✗ Error processing {topic}: {e}")
-            
+            import traceback
+            traceback.print_exc()
+
         # Heavy cleanup after each item
         gc.collect()
         # Small pause to be nice to APIs
         time.sleep(2)
-        
-    print("Batch processing complete.")
+
+    print(f"Batch processing complete. Processed {len(rows)} item(s).")
 
 @app.route('/authorize')
 def authorize():
