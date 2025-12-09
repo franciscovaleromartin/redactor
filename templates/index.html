@@ -33,6 +33,38 @@
         </header>
 
         <main>
+            <!-- API Token Section -->
+            <section id="apiTokenSection" class="api-token-section" style="display: none; margin-bottom: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+                <h2 style="margin-top: 0; font-size: 1.3em;">🔑 Token de API para Google Sheets</h2>
+                <p style="color: #666; margin-bottom: 15px;">
+                    Genera un token personal para usar la API desde Google Sheets u otras aplicaciones.
+                </p>
+
+                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    <button id="generateTokenBtn" class="secondary-btn">
+                        Generar Nuevo Token
+                    </button>
+                </div>
+
+                <div id="newTokenDisplay" style="display: none; background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
+                    <strong style="display: block; margin-bottom: 10px;">⚠️ Token generado (guárdalo en un lugar seguro):</strong>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="text" id="generatedToken" readonly style="flex: 1; padding: 8px; font-family: monospace; font-size: 0.9em; background: white;">
+                        <button id="copyTokenBtn" class="secondary-btn" style="background: #10b981;">
+                            Copiar
+                        </button>
+                    </div>
+                    <p style="margin-top: 10px; margin-bottom: 0; font-size: 0.9em; color: #856404;">
+                        Este token solo se muestra una vez. Cópialo y úsalo en tu script de Google Sheets.
+                    </p>
+                </div>
+
+                <div id="tokensList" style="display: none;">
+                    <h3 style="font-size: 1.1em; margin-bottom: 10px;">Tus tokens activos:</h3>
+                    <div id="tokensContainer"></div>
+                </div>
+            </section>
+
             <section class="input-section">
                 <form id="articleForm">
                     <div class="form-group">

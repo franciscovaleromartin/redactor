@@ -188,6 +188,52 @@ OAUTH_CREDENTIALS_FILE = 'oauth_credentials.json'
 # NOTE: Credentials are now stored ONLY in Flask sessions (not in files)
 # This ensures proper session isolation between different users
 
+# API Token Configuration
+API_TOKENS_FILE = 'api_tokens.json'
+import secrets
+import hashlib
+from datetime import datetime
+
+def load_api_tokens():
+    """Load API tokens from file."""
+    if os.path.exists(API_TOKENS_FILE):
+        try:
+            with open(API_TOKENS_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading API tokens: {e}")
+            return {}
+    return {}
+
+def save_api_tokens(tokens):
+    """Save API tokens to file."""
+    try:
+        with open(API_TOKENS_FILE, 'w') as f:
+            json.dump(tokens, f, indent=2)
+    except Exception as e:
+        print(f"Error saving API tokens: {e}")
+
+def generate_api_token():
+    """Generate a secure random API token."""
+    return secrets.token_urlsafe(32)
+
+def hash_token(token):
+    """Hash a token for secure storage."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+def get_credentials_from_token(token):
+    """Get credentials associated with an API token."""
+    tokens = load_api_tokens()
+    token_hash = hash_token(token)
+
+    if token_hash in tokens:
+        token_data = tokens[token_hash]
+        # Update last used timestamp
+        token_data['last_used'] = datetime.utcnow().isoformat()
+        save_api_tokens(tokens)
+        return token_data.get('credentials')
+    return None
+
 def get_oauth_config():
     """Load OAuth configuration from file or environment variable."""
     if os.path.exists(OAUTH_CREDENTIALS_FILE):
@@ -741,6 +787,130 @@ def disconnect_drive():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/generate-api-token', methods=['POST'])
+def generate_new_api_token():
+    """Generate a new API token for the authenticated user."""
+    try:
+        # User must be authenticated via session
+        if 'credentials' not in session:
+            return jsonify({"error": "Not authenticated. Please login first."}), 401
+
+        creds_dict = session['credentials']
+
+        # Generate new token
+        new_token = generate_api_token()
+        token_hash = hash_token(new_token)
+
+        # Get current user email for identification
+        try:
+            service = build('drive', 'v3', credentials=Credentials(**creds_dict))
+            about = service.about().get(fields="user").execute()
+            user_email = about.get('user', {}).get('emailAddress', 'unknown')
+        except Exception:
+            user_email = 'unknown'
+
+        # Load existing tokens
+        tokens = load_api_tokens()
+
+        # Store token with credentials
+        tokens[token_hash] = {
+            'credentials': creds_dict,
+            'created_at': datetime.utcnow().isoformat(),
+            'last_used': None,
+            'user_email': user_email
+        }
+
+        save_api_tokens(tokens)
+
+        return jsonify({
+            "success": True,
+            "token": new_token,
+            "message": "API token generated successfully. Keep this token secure!"
+        })
+
+    except Exception as e:
+        print(f"Error generating API token: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api-tokens', methods=['GET'])
+def list_api_tokens():
+    """List all API tokens for the current user."""
+    try:
+        # User must be authenticated via session
+        if 'credentials' not in session:
+            return jsonify({"error": "Not authenticated. Please login first."}), 401
+
+        creds_dict = session['credentials']
+
+        # Get current user email
+        try:
+            service = build('drive', 'v3', credentials=Credentials(**creds_dict))
+            about = service.about().get(fields="user").execute()
+            user_email = about.get('user', {}).get('emailAddress', 'unknown')
+        except Exception:
+            user_email = 'unknown'
+
+        # Load tokens and filter by user
+        tokens = load_api_tokens()
+        user_tokens = []
+
+        for token_hash, token_data in tokens.items():
+            if token_data.get('user_email') == user_email:
+                user_tokens.append({
+                    'token_hash': token_hash[:8] + '...',  # Show only first 8 chars
+                    'created_at': token_data.get('created_at'),
+                    'last_used': token_data.get('last_used')
+                })
+
+        return jsonify({"tokens": user_tokens})
+
+    except Exception as e:
+        print(f"Error listing API tokens: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/revoke-api-token', methods=['POST'])
+def revoke_api_token():
+    """Revoke an API token."""
+    try:
+        # User must be authenticated via session
+        if 'credentials' not in session:
+            return jsonify({"error": "Not authenticated. Please login first."}), 401
+
+        data = request.json
+        token_to_revoke = data.get('token')
+
+        if not token_to_revoke:
+            return jsonify({"error": "Token is required"}), 400
+
+        token_hash = hash_token(token_to_revoke)
+
+        # Load tokens
+        tokens = load_api_tokens()
+
+        if token_hash in tokens:
+            # Get current user email
+            creds_dict = session['credentials']
+            try:
+                service = build('drive', 'v3', credentials=Credentials(**creds_dict))
+                about = service.about().get(fields="user").execute()
+                user_email = about.get('user', {}).get('emailAddress', 'unknown')
+            except Exception:
+                user_email = 'unknown'
+
+            # Verify the token belongs to the current user
+            if tokens[token_hash].get('user_email') == user_email:
+                del tokens[token_hash]
+                save_api_tokens(tokens)
+                return jsonify({"success": True, "message": "Token revoked successfully"})
+            else:
+                return jsonify({"error": "Unauthorized to revoke this token"}), 403
+        else:
+            return jsonify({"error": "Token not found"}), 404
+
+    except Exception as e:
+        print(f"Error revoking API token: {e}")
+        return jsonify({"error": str(e)}), 500
+
 DRAFT_FILE = 'latest_draft.json'
 
 @app.route('/', methods=['GET', 'POST'])
@@ -769,11 +939,22 @@ def index():
 
                 # Process whatever rows we have (1 or many)
 
-                # Try to get credentials from session ONLY
-                creds_dict = session.get('credentials')
+                # Try to get credentials from session OR API token
+                creds_dict = None
+
+                # 1. Check for API token in header (for Google Sheets and external APIs)
+                api_token = request.headers.get('X-API-Token')
+                if api_token:
+                    creds_dict = get_credentials_from_token(api_token)
+                    if not creds_dict:
+                        return jsonify({"status": "error", "message": "Invalid or expired API token."}), 401
+
+                # 2. Check for session credentials (for web browser)
+                if not creds_dict:
+                    creds_dict = session.get('credentials')
 
                 if not creds_dict:
-                    return jsonify({"status": "error", "message": "No estás autenticado en Google Drive. Por favor visita la web y conecta Drive primero."}), 401
+                    return jsonify({"status": "error", "message": "No estás autenticado en Google Drive. Por favor visita la web y conecta Drive primero, o proporciona un token de API válido."}), 401
 
                 # Start background thread
                 thread = threading.Thread(target=process_batch, args=(rows, creds_dict))
