@@ -275,7 +275,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await response.json();
 
             if (result.success) {
-                driveStatus.innerHTML = `✅ Guardado en Drive: <a href="${result.link}" target="_blank">Ver documento</a>`;
+                driveStatus.innerHTML = `✅ Guardado en tu Google Drive (carpeta "redactor"): <a href="${result.link}" target="_blank">Ver documento</a>`;
                 sendToDriveBtn.textContent = "Enviado";
             } else {
                 throw new Error(result.error || "Error desconocido");
